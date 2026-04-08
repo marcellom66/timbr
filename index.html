@@ -8,19 +8,15 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Timbrature">
 <title>Timbrature</title>
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
-
 <style>
 :root {
   --bg: #0f0f1a;
   --surface: #1a1a2e;
   --surface2: #16213e;
   --accent: #e94560;
-  --accent2: #0f3460;
   --green: #00d4aa;
-  --amber: #ffa500;
   --text: #e8e8f0;
   --text2: #8888aa;
   --text3: #44445a;
@@ -29,9 +25,7 @@
   --mono: 'JetBrains Mono', monospace;
   --sans: 'Syne', sans-serif;
 }
-
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-
 body {
   background: var(--bg);
   color: var(--text);
@@ -39,8 +33,6 @@ body {
   min-height: 100dvh;
   padding-bottom: env(safe-area-inset-bottom);
 }
-
-/* subtle grid background */
 body::before {
   content: '';
   position: fixed;
@@ -52,22 +44,15 @@ body::before {
   pointer-events: none;
   z-index: 0;
 }
-
 .app { position: relative; z-index: 1; max-width: 560px; margin: 0 auto; padding: 0 16px 100px; }
-
-/* ---- HEADER ---- */
+ 
 header {
   padding: 24px 0 20px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
 }
-.logo {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  color: var(--text);
-}
+.logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
 .logo span { color: var(--accent); }
 .week-badge {
   font-family: var(--mono);
@@ -79,8 +64,7 @@ header {
   padding: 4px 10px;
   margin-top: 4px;
 }
-
-/* ---- WEEK NAV ---- */
+ 
 .week-nav {
   display: flex;
   align-items: center;
@@ -107,8 +91,23 @@ header {
 .week-title { text-align: center; }
 .week-title .label { font-weight: 600; font-size: 14px; }
 .week-title .dates { font-family: var(--mono); font-size: 11px; color: var(--text2); margin-top: 2px; }
-
-/* ---- PROGRESS RING ---- */
+ 
+/* festivi banner */
+.holiday-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(233,69,96,0.08);
+  border: 1px solid rgba(233,69,96,0.2);
+  border-radius: 10px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+.holiday-banner .icon { font-size: 14px; }
+ 
 .progress-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -132,17 +131,16 @@ header {
 .ring-pct { font-family: var(--mono); font-size: 18px; font-weight: 700; line-height: 1; }
 .ring-label { font-size: 9px; color: var(--text2); margin-top: 2px; letter-spacing: 0.5px; }
 .progress-info { flex: 1; }
-.big-hours { font-family: var(--mono); font-size: 28px; font-weight: 700; line-height: 1; }
-.big-hours small { font-size: 13px; color: var(--text2); font-weight: 400; }
+.big-hours { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1; }
+.big-hours small { font-size: 12px; color: var(--text2); font-weight: 400; }
 .diff-line { margin-top: 6px; font-size: 13px; font-weight: 600; }
 .diff-pos { color: var(--green); }
 .diff-neg { color: var(--accent); }
 .diff-zero { color: var(--text2); }
 .target-line { font-size: 11px; color: var(--text2); margin-top: 4px; font-family: var(--mono); }
-
-/* ---- DAYS ---- */
+ 
 .days-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
-
+ 
 .day-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -152,7 +150,13 @@ header {
 }
 .day-card.today { border-color: rgba(233,69,96,0.4); }
 .day-card.today .day-name { color: var(--accent); }
-
+.day-card.holiday {
+  border-color: rgba(233,69,96,0.25);
+  background: rgba(233,69,96,0.04);
+  opacity: 0.85;
+}
+.day-card.holiday .day-name { color: var(--accent); }
+ 
 .day-header {
   display: flex;
   justify-content: space-between;
@@ -161,12 +165,24 @@ header {
 }
 .day-name { font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
 .day-date { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.holiday-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(233,69,96,0.1);
+  border: 1px solid rgba(233,69,96,0.2);
+  border-radius: 20px;
+  padding: 2px 8px;
+  margin-top: 3px;
+  display: inline-block;
+}
 .day-result { font-family: var(--mono); font-size: 16px; font-weight: 700; }
 .day-result.pos { color: var(--green); }
 .day-result.neg { color: var(--accent); }
 .day-result.empty { color: var(--text3); }
+.day-result.festivo { color: var(--accent); font-size: 13px; }
 .day-sub { font-family: var(--mono); font-size: 10px; margin-top: 2px; text-align: right; }
-
+ 
 .day-inputs {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -197,8 +213,11 @@ header {
 }
 .input-group input[type="time"]:focus { border-color: var(--accent); }
 .input-group input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
-
-/* ---- SUMMARY ROW ---- */
+.input-group input[type="time"]:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+ 
 .summary-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -214,8 +233,7 @@ header {
 }
 .stat-val { font-family: var(--mono); font-size: 15px; font-weight: 700; }
 .stat-lbl { font-size: 10px; color: var(--text2); margin-top: 3px; letter-spacing: 0.5px; }
-
-/* ---- FOOTER ---- */
+ 
 .footer-note {
   text-align: center;
   font-family: var(--mono);
@@ -238,8 +256,7 @@ header {
   transition: all 0.15s;
 }
 .clear-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-/* install banner */
+ 
 #install-banner {
   display: none;
   position: fixed;
@@ -257,11 +274,11 @@ header {
   z-index: 999;
   box-shadow: 0 4px 20px rgba(233,69,96,0.5);
   white-space: nowrap;
+  border: none;
 }
 </style>
 </head>
 <body>
-
 <div class="app">
   <header>
     <div>
@@ -269,7 +286,7 @@ header {
       <div class="week-badge" id="week-badge">W00 · 2025</div>
     </div>
   </header>
-
+ 
   <div class="week-nav">
     <button class="nav-btn" id="btn-prev">← PREC</button>
     <div class="week-title">
@@ -278,7 +295,12 @@ header {
     </div>
     <button class="nav-btn" id="btn-next" disabled>SUCC →</button>
   </div>
-
+ 
+  <div id="holiday-banner" class="holiday-banner" style="display:none">
+    <span class="icon">🗓</span>
+    <span id="holiday-banner-text"></span>
+  </div>
+ 
   <div class="progress-card">
     <div class="ring-wrap">
       <svg width="90" height="90" viewBox="0 0 90 90">
@@ -295,19 +317,19 @@ header {
     <div class="progress-info">
       <div class="big-hours" id="big-hours">0h 00m <small>/ 38h 00m</small></div>
       <div class="diff-line diff-zero" id="diff-line">— in linea con il target</div>
-      <div class="target-line">TARGET: 7h 36m/giorno · pausa: 30'</div>
+      <div class="target-line" id="target-line">TARGET: 38h 00m · pausa: 30'</div>
     </div>
   </div>
-
+ 
   <div class="days-list" id="days-list"></div>
-
+ 
   <div class="summary-row">
     <div class="stat-card">
       <div class="stat-val" id="s-worked">0h 00m</div>
       <div class="stat-lbl">LAVORATE</div>
     </div>
     <div class="stat-card">
-      <div class="stat-val" style="color:var(--text2)">38h 00m</div>
+      <div class="stat-val" id="s-target" style="color:var(--text2)">38h 00m</div>
       <div class="stat-lbl">OBIETTIVO</div>
     </div>
     <div class="stat-card">
@@ -315,26 +337,81 @@ header {
       <div class="stat-lbl" id="s-diff-lbl">RIMANENTI</div>
     </div>
   </div>
-
+ 
   <div class="footer-note">
     Pausa 30' sottratta automaticamente<br>
+    Festivi: target settimanale ridotto proporzionalmente<br>
     Dati salvati localmente sul dispositivo
   </div>
   <button class="clear-btn" id="clear-btn">✕ Azzera settimana corrente</button>
 </div>
-
+ 
 <button id="install-banner">⬇ Installa app</button>
-
+ 
 <script>
+// ---- costanti ----
 const TARGET_WEEK = 38 * 60;
-const TARGET_DAY  = TARGET_WEEK / 5;
+const TARGET_DAY  = TARGET_WEEK / 5;  // 456 min = 7h36m
 const BREAK       = 30;
 const DAYS_IT     = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì'];
 const SHORT_IT    = ['LUN','MAR','MER','GIO','VEN'];
-
+ 
 let weekOffset = 0;
-
-// ---- date helpers ----
+ 
+// ---- calcolo Pasqua (algoritmo anonimo gregoriano) ----
+function easterDate(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19*a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2*e + 2*i - h - k) % 7;
+  const m = Math.floor((a + 11*h + 22*l) / 451);
+  const month = Math.floor((h + l - 7*m + 114) / 31);
+  const day   = ((h + l - 7*m + 114) % 31) + 1;
+  return new Date(year, month-1, day);
+}
+ 
+// ---- festivi italiani per un anno ----
+function getHolidays(year) {
+  const easter = easterDate(year);
+  const pasquetta = new Date(easter); pasquetta.setDate(pasquetta.getDate()+1);
+ 
+  const fixed = [
+    [1,  1,  'Capodanno'],
+    [6,  1,  'Epifania'],
+    [25, 4,  'Festa della Liberazione'],
+    [1,  5,  'Festa del Lavoro'],
+    [2,  6,  'Festa della Repubblica'],
+    [15, 8,  'Ferragosto'],
+    [1,  11, 'Ognissanti'],
+    [8,  12, 'Immacolata Concezione'],
+    [25, 12, 'Natale'],
+    [26, 12, 'Santo Stefano'],
+  ].map(([d,m,n]) => ({ date: new Date(year, m-1, d), name: n }));
+ 
+  fixed.push({ date: easter,    name: 'Pasqua' });
+  fixed.push({ date: pasquetta, name: 'Pasquetta' });
+ 
+  return fixed;
+}
+ 
+// ---- chiave: "YYYY-MM-DD" ----
+function dateKey(d) {
+  return d.toISOString().slice(0,10);
+}
+ 
+// ---- festivo per una data (null se non festivo) ----
+function holidayName(d, holidayMap) {
+  return holidayMap[dateKey(d)] || null;
+}
+ 
+// ---- helpers data ----
 function getMonday(offset) {
   const d = new Date();
   d.setHours(0,0,0,0);
@@ -349,10 +426,9 @@ function getWeekNum(d) {
   return Math.ceil(((d-jan1)/86400000 + jan1.getDay()+1)/7);
 }
 function storageKey(offset) {
-  const mon = getMonday(offset);
-  return 'timbr-' + mon.toISOString().slice(0,10);
+  return 'timbr-' + getMonday(offset).toISOString().slice(0,10);
 }
-
+ 
 // ---- storage ----
 function loadWeek(offset) {
   try {
@@ -364,7 +440,7 @@ function loadWeek(offset) {
 function saveWeek(offset, data) {
   try { localStorage.setItem(storageKey(offset), JSON.stringify(data)); } catch(e){}
 }
-
+ 
 // ---- calc ----
 function t2m(t) {
   if (!t) return null;
@@ -372,7 +448,7 @@ function t2m(t) {
   return h*60+m;
 }
 function minToHM(min, always) {
-  if (min===null && !always) return '--:--';
+  if ((min===null || min===undefined) && !always) return '--:--';
   const abs = Math.abs(min||0);
   return Math.floor(abs/60)+'h '+String(abs%60).padStart(2,'0')+'m';
 }
@@ -381,14 +457,31 @@ function calcDay(e,x) {
   if(em===null||xm===null||xm<=em) return null;
   return xm-em-BREAK;
 }
-
-// ---- render ----
+ 
+// ---- render principale ----
 function render() {
   const mon = getMonday(weekOffset);
   const wn  = getWeekNum(mon);
   const sun = new Date(mon.getTime()+4*86400000);
-
-  document.getElementById('week-badge').textContent = 'W'+String(wn).padStart(2,'0')+' · '+mon.getFullYear();
+  const year = mon.getFullYear();
+ 
+  // mappa festivi anno corrente (e anno successivo per fine dicembre)
+  const hmap = {};
+  getHolidays(year).forEach(h => { hmap[dateKey(h.date)] = h.name; });
+  if (year !== sun.getFullYear()) {
+    getHolidays(sun.getFullYear()).forEach(h => { hmap[dateKey(h.date)] = h.name; });
+  }
+ 
+  // festivi che cadono lun-ven in questa settimana
+  const weekDays = Array(5).fill(null).map((_,i) => new Date(mon.getTime()+i*86400000));
+  const weekHolidays = weekDays.map(d => holidayName(d, hmap));
+  const numHolidays  = weekHolidays.filter(Boolean).length;
+ 
+  // target effettivo settimana
+  const effectiveTarget = TARGET_WEEK - numHolidays * TARGET_DAY;
+ 
+  // header
+  document.getElementById('week-badge').textContent = 'W'+String(wn).padStart(2,'0')+' · '+year;
   document.getElementById('nav-label').textContent =
     weekOffset===0 ? 'Settimana corrente' :
     weekOffset===-1 ? 'Settimana scorsa' :
@@ -396,79 +489,123 @@ function render() {
   document.getElementById('nav-dates').textContent = fmt(mon)+' — '+fmt(sun);
   document.getElementById('btn-next').disabled = weekOffset >= 0;
   document.getElementById('btn-prev').disabled = weekOffset <= -52;
-
+ 
+  // banner festivi
+  const banner = document.getElementById('holiday-banner');
+  if (numHolidays > 0) {
+    const names = weekHolidays.filter(Boolean).join(', ');
+    document.getElementById('holiday-banner-text').textContent =
+      numHolidays===1
+        ? `Festivo: ${names} · target ridotto a ${minToHM(effectiveTarget,true)}`
+        : `Festivi: ${names} · target ridotto a ${minToHM(effectiveTarget,true)}`;
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+ 
+  // dati
   const data = loadWeek(weekOffset);
   const todayDow = weekOffset===0 ? (new Date().getDay()+6)%7 : -1;
-  const dailyMins = data.map(d=>calcDay(d.entry,d.exit));
-  const total = dailyMins.reduce((s,m)=>s+(m??0),0);
-  const diff  = total - TARGET_WEEK;
-  const pct   = Math.min(100, Math.round(total/TARGET_WEEK*100));
-
+ 
+  const dailyMins = data.map((d,i) => {
+    if (weekHolidays[i]) return 0; // festivo = 0 lavorato, non null
+    return calcDay(d.entry, d.exit);
+  });
+ 
+  // somma solo giorni non festivi con dati inseriti
+  const total = data.reduce((s,d,i) => {
+    if (weekHolidays[i]) return s;
+    const m = calcDay(d.entry, d.exit);
+    return s + (m ?? 0);
+  }, 0);
+ 
+  const diff = total - effectiveTarget;
+  const pct  = effectiveTarget > 0 ? Math.min(100, Math.round(total/effectiveTarget*100)) : 100;
+ 
   // ring
   const circ = 2*Math.PI*38;
-  const offset2 = circ*(1-pct/100);
+  const ringOffset = circ*(1-pct/100);
   const ring = document.getElementById('ring-circle');
-  ring.setAttribute('stroke-dashoffset', offset2.toFixed(2));
+  ring.setAttribute('stroke-dashoffset', ringOffset.toFixed(2));
   ring.style.stroke = diff>=0 ? 'var(--green)' : 'var(--accent)';
   document.getElementById('ring-pct').textContent = pct+'%';
-
-  // big
-  document.getElementById('big-hours').innerHTML = minToHM(total,true)+' <small>/ 38h 00m</small>';
+ 
+  // big hours
+  document.getElementById('big-hours').innerHTML =
+    minToHM(total,true)+' <small>/ '+minToHM(effectiveTarget,true)+'</small>';
+ 
   const dl = document.getElementById('diff-line');
-  if(diff===0) {
+  if(diff===0){
     dl.className='diff-line diff-zero'; dl.textContent='— in linea con il target';
-  } else if(diff>0) {
+  } else if(diff>0){
     dl.className='diff-line diff-pos'; dl.textContent='↑ +'+minToHM(diff)+' straordinario';
   } else {
     dl.className='diff-line diff-neg'; dl.textContent='↓ mancano '+minToHM(-diff);
   }
-
+ 
+  const targLabel = numHolidays > 0
+    ? `TARGET: ${minToHM(effectiveTarget,true)} (−${numHolidays} festiv${numHolidays>1?'i':'o'}) · pausa: 30'`
+    : `TARGET: 38h 00m · pausa: 30'`;
+  document.getElementById('target-line').textContent = targLabel;
+ 
   // summary
   document.getElementById('s-worked').textContent = minToHM(total,true);
+  document.getElementById('s-target').textContent = minToHM(effectiveTarget,true);
   const sd = document.getElementById('s-diff');
   const sl = document.getElementById('s-diff-lbl');
   if(diff>=0){
-    sd.textContent = minToHM(diff,true);
-    sd.style.color = 'var(--green)';
-    sl.textContent = 'STRAORD.';
+    sd.textContent=minToHM(diff,true); sd.style.color='var(--green)'; sl.textContent='STRAORD.';
   } else {
-    sd.textContent = minToHM(-diff,true);
-    sd.style.color = 'var(--accent)';
-    sl.textContent = 'RIMANENTI';
+    sd.textContent=minToHM(-diff,true); sd.style.color='var(--accent)'; sl.textContent='RIMANENTI';
   }
-
-  // days
+ 
+  // cards giorni
   const list = document.getElementById('days-list');
   list.innerHTML = '';
-  data.forEach((day,i)=>{
-    const worked = dailyMins[i];
-    const dayDate = new Date(mon.getTime()+i*86400000);
-    const dayDiff = worked!==null ? worked-TARGET_DAY : null;
-    const isToday = todayDow===i;
-
-    const card = document.createElement('div');
-    card.className = 'day-card'+(isToday?' today':'');
-
+ 
+  data.forEach((day,i) => {
+    const isHoliday = !!weekHolidays[i];
+    const worked    = isHoliday ? null : calcDay(day.entry, day.exit);
+    const dayDate   = weekDays[i];
+    const isToday   = todayDow===i;
+    const dayDiff   = worked!==null ? worked-TARGET_DAY : null;
+ 
+    let cardClass = 'day-card';
+    if(isToday && !isHoliday) cardClass += ' today';
+    if(isHoliday) cardClass += ' holiday';
+ 
     let resultClass = 'day-result empty';
     let resultText  = '--:--';
-    let subText     = '– pausa 30\'';
-    if(worked!==null){
+    let subText     = "– pausa 30'";
+    let subColor    = 'var(--text3)';
+ 
+    if(isHoliday){
+      resultClass = 'day-result festivo';
+      resultText  = 'FESTIVO';
+      subText     = weekHolidays[i];
+      subColor    = 'var(--accent)';
+    } else if(worked!==null){
       resultClass = 'day-result '+(dayDiff>=0?'pos':'neg');
       resultText  = minToHM(worked);
-      subText     = (dayDiff>=0 ? '+' : '')+minToHM(dayDiff);
+      subText     = (dayDiff>=0?'+':'')+minToHM(dayDiff);
+      subColor    = dayDiff>=0?'var(--green)':'var(--accent)';
     }
-
+ 
+    const card = document.createElement('div');
+    card.className = cardClass;
     card.innerHTML = `
       <div class="day-header">
         <div>
-          <div class="day-name">${isToday?'● ':''} ${SHORT_IT[i]} · ${DAYS_IT[i]}</div>
+          <div class="day-name">${isToday&&!isHoliday?'● ':''} ${SHORT_IT[i]} · ${DAYS_IT[i]}</div>
           <div class="day-date">${fmt(dayDate)}</div>
+          ${isHoliday ? `<div class="holiday-label">🗓 ${weekHolidays[i]}</div>` : ''}
         </div>
         <div style="text-align:right">
           <div class="${resultClass}">${resultText}</div>
-          <div class="day-sub" style="color:${worked===null?'var(--text3)':dayDiff>=0?'var(--green)':'var(--accent)'}">${subText}</div>
+          <div class="day-sub" style="color:${subColor}">${isHoliday?'':subText}</div>
         </div>
       </div>
+      ${!isHoliday ? `
       <div class="day-inputs">
         <div class="input-group">
           <label>Entrata</label>
@@ -478,12 +615,12 @@ function render() {
           <label>Uscita</label>
           <input type="time" value="${day.exit||''}" data-day="${i}" data-field="exit">
         </div>
-      </div>
+      </div>` : ''}
     `;
     list.appendChild(card);
   });
-
-  // events on new inputs
+ 
+  // eventi input
   list.querySelectorAll('input[type=time]').forEach(inp=>{
     inp.addEventListener('change', e=>{
       const idx   = +e.target.dataset.day;
@@ -495,16 +632,17 @@ function render() {
     });
   });
 }
-
+ 
+// nav
 document.getElementById('btn-prev').addEventListener('click',()=>{ weekOffset--; render(); });
 document.getElementById('btn-next').addEventListener('click',()=>{ weekOffset++; render(); });
 document.getElementById('clear-btn').addEventListener('click',()=>{
-  if(confirm('Azzera tutti i dati della settimana?')){
+  if(confirm('Azzera tutti i dati della settimana corrente?')){
     localStorage.removeItem(storageKey(weekOffset));
     render();
   }
 });
-
+ 
 // PWA install
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', e=>{
@@ -519,32 +657,29 @@ document.getElementById('install-banner').addEventListener('click', async ()=>{
   if(outcome==='accepted') document.getElementById('install-banner').style.display='none';
   deferredPrompt = null;
 });
-
+ 
 render();
 </script>
-
-<!-- PWA Service Worker -->
+ 
+<!-- Service Worker inline -->
 <script>
 if('serviceWorker' in navigator){
   const swCode = `
-    const CACHE = 'timbr-v1';
+    const CACHE = 'timbr-v2';
     self.addEventListener('install', e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.add('/')));
       self.skipWaiting();
     });
     self.addEventListener('fetch', e=>{
-      e.respondWith(
-        caches.match(e.request).then(r=>r||fetch(e.request))
-      );
+      e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));
     });
   `;
   const blob = new Blob([swCode],{type:'application/javascript'});
-  const url  = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(url).catch(()=>{});
+  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
 }
 </script>
-
-<!-- Manifest inline via link tag -->
+ 
+<!-- Manifest inline -->
 <script>
 const manifest = {
   name: 'Timbrature',
@@ -559,12 +694,11 @@ const manifest = {
     sizes: '192x192', type: 'image/svg+xml'
   }]
 };
-const blob = new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
+const blob2 = new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
 const link = document.createElement('link');
 link.rel = 'manifest';
-link.href = URL.createObjectURL(blob);
+link.href = URL.createObjectURL(blob2);
 document.head.appendChild(link);
 </script>
-
 </body>
 </html>
