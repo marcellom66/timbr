@@ -245,6 +245,50 @@ header {
 .input-group input[type="time"]:focus { border-color: var(--accent); }
 .input-group input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
 
+/* permesso / pausa */
+.permesso-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  border-radius: 20px;
+  padding: 2px 8px;
+  margin: 3px 4px 0 0;
+  display: inline-block;
+  color: #ffb84d;
+  background: rgba(255,184,77,0.1);
+  border: 1px solid rgba(255,184,77,0.28);
+}
+.pausa-label { color: var(--text2); background: rgba(255,255,255,0.05); border-color: var(--border); }
+.day-extra { margin-top: 10px; }
+.day-extra summary {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  cursor: pointer;
+  padding: 4px 0;
+  list-style: none;
+  user-select: none;
+}
+.day-extra summary::-webkit-details-marker { display: none; }
+.day-extra summary::before { content: '＋ '; color: var(--accent); }
+.day-extra[open] summary::before { content: '－ '; }
+.day-extra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+.input-group input.extra-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 16px;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.input-group input.extra-input:focus { border-color: #ffb84d; }
+.extra-hint { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 6px; line-height: 1.5; }
+
 .summary-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -624,19 +668,47 @@ function dayInfo(d) {
 }
 
 // ================= STORAGE SETTIMANE =================
-function emptyWeek() { return Array.from({ length: 5 }, () => ({ entry: '', exit: '' })); }
+// Un giorno = { entry, exit, permesso, pausa }
+//   permesso: minuti di permesso retribuito (contano come ore lavorate), 0 = nessuno
+//   pausa:    minuti di pausa da detrarre, null = pausa standard (BREAK)
+function emptyDay() { return { entry: '', exit: '', permesso: 0, pausa: null }; }
+function emptyWeek() { return Array.from({ length: 5 }, emptyDay); }
 function weekKeyOf(mon) { return 'timbr-' + dateKey(mon); }
 
 function cleanTime(t) { return (typeof t === 'string' && /^\d{2}:\d{2}$/.test(t)) ? t : ''; }
+function cleanPermesso(v) {
+  const n = Number(v);
+  return (v !== null && v !== '' && isFinite(n) && n > 0 && n <= 24 * 60) ? Math.round(n) : 0;
+}
+function cleanPausa(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return (isFinite(n) && n >= 0 && n <= 8 * 60) ? Math.round(n) : null;
+}
+function cleanDay(x) {
+  x = x || {};
+  return { entry: cleanTime(x.entry), exit: cleanTime(x.exit), permesso: cleanPermesso(x.permesso), pausa: cleanPausa(x.pausa) };
+}
+
+// "4", "4:30", "0:45", "4.5" non accettato volutamente (ambiguo) -> minuti oppure null
+function parseHM(s) {
+  if (typeof s !== 'string') return null;
+  const t = s.trim();
+  if (!t) return 0;
+  let m = /^(\d{1,2}):([0-5]\d)$/.exec(t);
+  if (m) return +m[1] * 60 + +m[2];
+  m = /^(\d{1,2})$/.exec(t);
+  if (m) return +m[1] * 60;
+  return null;
+}
+function minToColon(min) { return Math.floor(min / 60) + ':' + pad(min % 60); }
 
 function loadWeekByKey(key) {
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
       const a = JSON.parse(raw);
-      if (Array.isArray(a) && a.length === 5) {
-        return a.map(x => ({ entry: cleanTime(x && x.entry), exit: cleanTime(x && x.exit) }));
-      }
+      if (Array.isArray(a) && a.length === 5) return a.map(cleanDay);
     }
   } catch (e) {}
   return emptyWeek();
@@ -688,42 +760,60 @@ function minToHM(min) {
   return Math.floor(abs / 60) + 'h ' + pad(abs % 60) + 'm';
 }
 function fmtSigned(min) { return (min >= 0 ? '+' : '−') + minToHM(min); }
-function calcDay(e, x) {
-  const em = t2m(e), xm = t2m(x);
+// Calcolo di un giorno lavorativo. Restituisce null se il giorno non è valido/completo.
+//  - entrata e uscita entrambe valide  -> presenza netta (uscita-entrata-pausa) + permesso
+//  - entrata e uscita entrambe vuote   -> conta solo se c'è un permesso (es. permesso di tutto il giorno)
+//  - una sola delle due / uscita <= entrata -> giorno incompleto: non conta
+function dayCalc(day) {
+  const em = t2m(day.entry), xm = t2m(day.exit);
+  const permesso = day.permesso || 0;
+  const pausa = (day.pausa === null || day.pausa === undefined) ? BREAK : day.pausa;
+  if (em === null && xm === null) {
+    if (permesso > 0) return { presence: 0, pausa: 0, net: 0, permesso: permesso, worked: permesso, onlyPermesso: true };
+    return null;
+  }
   if (em === null || xm === null || xm <= em) return null;
-  return Math.max(0, xm - em - BREAK);
+  const presence = xm - em;
+  const net = Math.max(0, presence - pausa);
+  return { presence: presence, pausa: pausa, net: net, permesso: permesso, worked: net + permesso, onlyPermesso: false };
+}
+function calcDay(e, x) { // compatibilità: giorno senza permesso e con pausa standard
+  const c = dayCalc({ entry: e, exit: x, permesso: 0, pausa: null });
+  return c ? c.worked : null;
 }
 
 // statistiche di una settimana (mon = lunedì)
 function weekStats(mon, data) {
   const days = [];
-  let worked = 0, off = 0, balance = 0, plus = 0, minus = 0, daysCounted = 0;
+  let worked = 0, off = 0, balance = 0, plus = 0, minus = 0, daysCounted = 0, permessi = 0;
   for (let i = 0; i < 5; i++) {
     const d = addDays(mon, i);
     const info = dayInfo(d);
     if (info) {
       off++;
-      days.push({ d: d, info: info, worked: null });
+      days.push({ d: d, info: info, worked: null, calc: null });
       continue;
     }
-    const w = calcDay(data[i].entry, data[i].exit);
-    if (w !== null) {
+    const c = dayCalc(data[i]);
+    const w = c ? c.worked : null;
+    if (c) {
       worked += w;
+      permessi += c.permesso;
       balance += w - TARGET_DAY;
       if (w > TARGET_DAY) plus += w - TARGET_DAY;
       if (w < TARGET_DAY) minus += TARGET_DAY - w;
       daysCounted++;
     }
-    days.push({ d: d, info: null, worked: w });
+    days.push({ d: d, info: null, worked: w, calc: c });
   }
   const target = TARGET_WEEK - off * TARGET_DAY;
   return { days: days, worked: worked, target: target, diff: worked - target,
-           balance: balance, plus: plus, minus: minus, daysCounted: daysCounted, off: off };
+           balance: balance, plus: plus, minus: minus, daysCounted: daysCounted, off: off, permessi: permessi };
 }
 
 // saldo cumulativo su tutte le settimane salvate
 function totalBalance() {
-  let balance = 0, days = 0, worked = 0, plus = 0, minus = 0, first = null, last = null;
+  let balance = 0, days = 0, worked = 0, plus = 0, minus = 0, permessi = 0, first = null, last = null;
   allWeekKeys().forEach(k => {
     const mon = parseKey(k.slice(6));
     const st = weekStats(mon, loadWeekByKey(k));
@@ -739,11 +829,13 @@ function totalBalance() {
     worked += st.worked;
     plus += st.plus;
     minus += st.minus;
+    permessi += st.permessi;
   });
-  return { balance: balance, days: days, worked: worked, plus: plus, minus: minus, first: first, last: last };
+  return { balance: balance, days: days, worked: worked, plus: plus, minus: minus, permessi: permessi, first: first, last: last };
 }
 
 // ================= RENDER =================
+const EXTRA_OPEN = new Set(); // giorni in cui il pannello "permesso / pausa" è aperto
 function render() {
   const mon = getMonday(weekOffset);
   const fri = addDays(mon, 4);
@@ -776,7 +868,8 @@ function render() {
   document.getElementById('bt-plus').textContent = '+' + minToHM(tb.plus);
   document.getElementById('bt-minus').textContent = '−' + minToHM(tb.minus);
   document.getElementById('bal-sub').textContent = tb.days > 0
-    ? tb.days + (tb.days === 1 ? ' giorno registrato' : ' giorni registrati') + ' · dal ' + fmtFull(tb.first) + ' al ' + fmtFull(tb.last)
+    ? tb.days + (tb.days === 1 ? ' giorno registrato' : ' giorni registrati') + ' · dal ' + fmtFull(tb.first) + ' al ' + fmtFull(tb.last) +
+      (tb.permessi > 0 ? ' · di cui permessi: ' + minToHM(tb.permessi) : '')
     : 'nessun giorno registrato';
 
   // banner festivi / ferie
@@ -838,7 +931,7 @@ function render() {
 
     let resultClass = 'day-result empty';
     let resultText = '--:--';
-    let subText = '– pausa 30\'';
+    let subText = '– pausa ' + BREAK + '\'';
     let subColor = 'var(--text3)';
 
     if (isOff) {
@@ -852,12 +945,34 @@ function render() {
       subColor = dayDiff >= 0 ? 'var(--green)' : 'var(--accent)';
     }
 
+    const dd = data[i];
     let badge = '';
     if (isOff) {
       badge = isFerieDay
         ? '<div class="ferie-label">🏖 Ferie</div>'
         : '<div class="holiday-label">🗓 ' + x.info.label + '</div>';
+    } else {
+      if (dd.permesso > 0) badge += '<span class="permesso-label">🕊 Permesso ' + minToHM(dd.permesso) + '</span>';
+      if (dd.pausa !== null && dd.pausa !== BREAK) badge += '<span class="permesso-label pausa-label">☕ Pausa ' + dd.pausa + '\'</span>';
+      if (badge) badge = '<div>' + badge + '</div>';
     }
+
+    const dk = dateKey(x.d);
+    const extraOpen = !isOff && (dd.permesso > 0 || (dd.pausa !== null && dd.pausa !== BREAK) || EXTRA_OPEN.has(dk));
+    const extraHtml = isOff ? '' :
+      '<details class="day-extra" data-dk="' + dk + '"' + (extraOpen ? ' open' : '') + '>' +
+        '<summary>permesso / pausa diversa</summary>' +
+        '<div class="day-extra-grid">' +
+          '<div class="input-group"><label>Permesso (h:mm)</label>' +
+            '<input class="extra-input" type="text" inputmode="numeric" autocomplete="off" placeholder="0:00" ' +
+              'value="' + (dd.permesso > 0 ? minToColon(dd.permesso) : '') + '" data-day="' + i + '" data-field="permesso"></div>' +
+          '<div class="input-group"><label>Pausa (minuti)</label>' +
+            '<input class="extra-input" type="number" inputmode="numeric" min="0" max="480" step="1" placeholder="' + BREAK + '" ' +
+              'value="' + (dd.pausa !== null ? dd.pausa : '') + '" data-day="' + i + '" data-field="pausa"></div>' +
+        '</div>' +
+        '<div class="extra-hint">Il permesso (es. lutto, visita, ROL) conta come ore lavorate. ' +
+          'Lascia la pausa vuota per usare ' + BREAK + '\'; metti 0 se non l\'hai fatta (es. mezza giornata).</div>' +
+      '</details>';
 
     const card = document.createElement('div');
     card.className = cardClass;
@@ -878,7 +993,7 @@ function render() {
           '<input type="time" value="' + data[i].entry + '" data-day="' + i + '" data-field="entry"></div>' +
         '<div class="input-group"><label>Uscita</label>' +
           '<input type="time" value="' + data[i].exit + '" data-day="' + i + '" data-field="exit"></div>' +
-      '</div>' : '');
+      '</div>' + extraHtml : '');
     list.appendChild(card);
   });
 
@@ -889,6 +1004,36 @@ function render() {
       d[+e.target.dataset.day][e.target.dataset.field] = e.target.value;
       saveWeekByKey(k, d);
       render();
+    });
+  });
+
+  // permesso (h:mm) e pausa (minuti)
+  list.querySelectorAll('input.extra-input').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const k = weekKeyOf(getMonday(weekOffset));
+      const d = loadWeekByKey(k);
+      const i = +e.target.dataset.day;
+      const field = e.target.dataset.field;
+      if (field === 'permesso') {
+        const m = parseHM(e.target.value);
+        if (m === null || m > 24 * 60) { alert('Permesso non valido: scrivi ore e minuti, es. 4:00 oppure 2:30'); render(); return; }
+        d[i].permesso = m;
+      } else {
+        const raw = e.target.value.trim();
+        if (raw === '') d[i].pausa = null;
+        else {
+          const n = Number(raw);
+          if (!isFinite(n) || n < 0 || n > 480) { alert('Pausa non valida: scrivi i minuti (0–480)'); render(); return; }
+          d[i].pausa = Math.round(n);
+        }
+      }
+      saveWeekByKey(k, d);
+      render();
+    });
+  });
+  list.querySelectorAll('details.day-extra').forEach(det => {
+    det.addEventListener('toggle', () => {
+      if (det.open) EXTRA_OPEN.add(det.dataset.dk); else EXTRA_OPEN.delete(det.dataset.dk);
     });
   });
 
@@ -970,7 +1115,8 @@ const EX = {
 const FMT_DUR = '[h]:mm';
 const FMT_MIN = '+0" min";-0" min";0" min"';
 const SH_R = 'Risultato', SH_C = 'Come si calcola', SH_D = 'Dettaglio giorni',
-      SH_W = 'Riepilogo settimane', SH_F = 'Ferie e festivi';
+      SH_W = 'Riepilogo settimane', SH_F = 'Ferie e festivi', SH_P = 'Permessi e pause';
+const isCounted = x => x.status === 'ok' || x.status === 'solopermesso';
 
 function excelSerial(d) {
   return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000);
@@ -998,26 +1144,27 @@ function buildExportModel() {
     const st = weekStats(mon, data);
     const iso = isoWeek(mon);
     const label = 'W' + pad(iso.w) + '/' + iso.y;
-    const wk = { mon: mon, fri: addDays(mon, 4), label: label, festivi: 0, ferie: 0, valid: 0, worked: 0 };
+    const wk = { mon: mon, fri: addDays(mon, 4), label: label, festivi: 0, ferie: 0, valid: 0, worked: 0, permesso: 0 };
     st.days.forEach((x, i) => {
       const raw = data[i];
       const e = t2m(raw.entry), u = t2m(raw.exit);
+      const c = x.calc; // null se il giorno non conta
       let status;
       if (x.info) status = 'off';
+      else if (c) status = c.onlyPermesso ? 'solopermesso' : 'ok';
       else if (!raw.entry && !raw.exit) status = 'vuoto';
       else if (!raw.entry || !raw.exit) status = 'incompleto';
-      else if (u <= e) status = 'nonvalido';
-      else status = 'ok';
+      else status = 'nonvalido';
       if (x.info && x.info.type === 'festivo') wk.festivi++;
       if (x.info && x.info.type === 'ferie') wk.ferie++;
-      if (status === 'ok') { wk.valid++; wk.worked += x.worked; }
+      if (c) { wk.valid++; wk.worked += c.worked; wk.permesso += c.permesso; }
       days.push({ n: ++n, label: label, d: x.d, dayName: DAYS_IT[i], info: x.info, raw: raw,
-                  e: e, u: u, status: status, worked: x.worked, future: x.d > today });
+                  e: e, u: u, status: status, worked: x.worked, calc: c, future: x.d > today });
     });
     weeks.push(wk);
     mon = addDays(mon, 7);
   }
-  const counted = days.filter(x => x.status === 'ok');
+  const counted = days.filter(isCounted);
   return { days: days, weeks: weeks, counted: counted,
            first: counted[0].d, last: counted[counted.length - 1].d };
 }
@@ -1030,13 +1177,21 @@ function explainDay(x) {
     return tipo + ', non si lavora. Non ci sono ore dovute, quindi non crea né ore in più né ore in meno. '
       + 'Il target della settimana scende di ' + due + '. NON conta nel saldo.';
   }
-  if (x.status === 'ok') {
-    const pres = x.u - x.e;
+  if (isCounted(x)) {
+    const c = x.calc;
     const diff = x.worked - TARGET_DAY;
-    let s = 'Entrata ' + x.raw.entry + ', uscita ' + x.raw.exit + ' → in sede ' + minToHM(pres) + '. '
-      + 'Tolta la pausa di ' + BREAK + ' min → ore lavorate ' + minToHM(x.worked)
-      + (pres < BREAK ? ' (la presenza è più corta della pausa: le ore lavorate non possono scendere sotto zero)' : '')
-      + '. Ore dovute ' + due + '. ';
+    let s;
+    if (c.onlyPermesso) {
+      s = 'Nessun orario inserito, ma c\'è un permesso di ' + minToHM(c.permesso) + ': il permesso conta come ore lavorate → ore contate '
+        + minToHM(c.worked) + '. Ore dovute ' + due + '. ';
+    } else {
+      s = 'Entrata ' + x.raw.entry + ', uscita ' + x.raw.exit + ' → in sede ' + minToHM(c.presence) + '. '
+        + 'Tolta la pausa di ' + c.pausa + ' min' + (x.raw.pausa !== null ? ' (pausa modificata a mano, quella standard è ' + BREAK + ')' : '')
+        + ' → ore in sede nette ' + minToHM(c.net)
+        + (c.presence < c.pausa ? ' (la presenza è più corta della pausa: non può scendere sotto zero)' : '')
+        + (c.permesso > 0 ? '. Più il permesso di ' + minToHM(c.permesso) + ' (conta come ore lavorate) → ore contate ' + minToHM(c.worked) : '')
+        + '. Ore dovute ' + due + '. ';
+    }
     if (diff > 0) s += 'Differenza ' + fmtSigned(diff) + ': ' + minToHM(diff) + ' IN PIÙ.';
     else if (diff < 0) s += 'Differenza ' + fmtSigned(diff) + ': mancano ' + minToHM(diff) + ' (IN MENO, da recuperare).';
     else s += 'Esattamente le ore dovute: differenza zero.';
@@ -1046,12 +1201,14 @@ function explainDay(x) {
     return x.future
       ? 'Giorno non ancora arrivato: nessun orario da inserire. NON conta nel saldo.'
       : 'Giorno lavorativo senza orari inseriti: l\'app non può calcolare nulla, quindi NON conta nel saldo '
-        + '(non crea né ore in più né ore da recuperare). Se hai lavorato, inserisci entrata e uscita nell\'app.';
+        + '(non crea né ore in più né ore da recuperare). Se hai lavorato, inserisci entrata e uscita nell\'app; '
+        + 'se era un permesso per tutto il giorno, inserisci il permesso.';
   }
+  const ign = x.raw.permesso > 0 ? ' Il permesso inserito (' + minToHM(x.raw.permesso) + ') non viene contato finché l\'orario non è corretto.' : '';
   if (x.status === 'incompleto') {
-    return 'Manca l\'orario di ' + (x.raw.entry ? 'uscita' : 'entrata') + ': servono entrambi per calcolare. NON conta nel saldo.';
+    return 'Manca l\'orario di ' + (x.raw.entry ? 'uscita' : 'entrata') + ': servono entrambi per calcolare. NON conta nel saldo.' + ign;
   }
-  return 'L\'uscita (' + x.raw.exit + ') non è successiva all\'entrata (' + x.raw.entry + '): orario non valido. NON conta nel saldo.';
+  return 'L\'uscita (' + x.raw.exit + ') non è successiva all\'entrata (' + x.raw.entry + '): orario non valido. NON conta nel saldo.' + ign;
 }
 
 function explainWeek(w, due) {
@@ -1060,7 +1217,8 @@ function explainWeek(w, due) {
   let s = 'Dal ' + fmt(w.mon) + ' al ' + fmt(w.fri) + ': ' + plural(lav, 'giorno', 'giorni') + ' di lavoro da fare'
     + ' (' + plural(w.festivi, 'festivo', 'festivi') + ', ' + plural(w.ferie, 'giorno di ferie', 'giorni di ferie') + '). '
     + 'Orari validi in ' + plural(w.valid, 'giorno', 'giorni') + '. '
-    + 'Ore lavorate ' + minToHM(w.worked) + ', ore dovute per quei giorni ' + minToHM(w.valid * TARGET_DAY)
+    + 'Ore contate ' + minToHM(w.worked) + (w.permesso > 0 ? ' (di cui ' + minToHM(w.permesso) + ' di permesso)' : '')
+    + ', ore dovute per quei giorni ' + minToHM(w.valid * TARGET_DAY)
     + ' → differenza ' + fmtSigned(diff) + '.';
   if (w.valid < lav) s += ' Settimana incompleta: i giorni senza orari non sono contati.';
   return s;
@@ -1084,6 +1242,7 @@ function buildExportWorkbook(EJ) {
                                        views: [{ state: 'frozen', xSplit: 4, ySplit: 4 }] });
   const wsW = wb.addWorksheet(SH_W, { properties: { tabColor: { argb: 'FFFFA500' } },
                                        views: [{ state: 'frozen', xSplit: 2, ySplit: 4 }] });
+  const wsP = wb.addWorksheet(SH_P, { properties: { tabColor: { argb: 'FFFFB84D' } } });
   const wsF = wb.addWorksheet(SH_F, { properties: { tabColor: { argb: 'FF8888AA' } } });
 
   const q = s => "'" + s + "'!";
@@ -1139,7 +1298,7 @@ function buildExportWorkbook(EJ) {
   const params = [
     [5, 'Ore settimanali da contratto', 38 / 24, FMT_DUR, 'Le ore da fare ogni settimana: 38 ore.'],
     [6, 'Giorni lavorativi a settimana', 5, '0', 'Da lunedì a venerdì.'],
-    [8, 'Pausa pranzo (minuti)', BREAK, '0', 'Viene sempre tolta dalle ore in sede, ogni giorno lavorato.']
+    [8, 'Pausa pranzo standard (minuti)', BREAK, '0', 'Viene tolta dalle ore in sede ogni giorno lavorato, salvo i giorni in cui l\'hai modificata nell\'app (vedi foglio «' + SH_P + '»).']
   ];
   params.forEach(p => {
     const r = p[0];
@@ -1191,13 +1350,14 @@ function buildExportWorkbook(EJ) {
   sec(rr++, '2. LE REGOLE, UNA PER UNA');
   para('1) Si lavorano 38 ore a settimana su 5 giorni (lunedì–venerdì): 38 ÷ 5 = ' + DUE_TXT + ' di lavoro dovuto ogni giorno.');
   para('2) Ogni giorno si inseriscono l\'orario di entrata e quello di uscita. Le ore in sede sono: uscita − entrata.');
-  para('3) Dalle ore in sede si toglie sempre la pausa pranzo di ' + BREAK + ' minuti. Ore lavorate = ore in sede − pausa.');
-  para('4) La differenza del giorno è: ore lavorate − ' + DUE_TXT + '. Se è positiva sono ore IN PIÙ; se è negativa sono ore IN MENO (da recuperare).');
+  para('3) Dalle ore in sede si toglie la pausa pranzo: ' + BREAK + ' minuti di norma, oppure il valore che hai scritto a mano per quel giorno (es. 0 se in una mezza giornata non hai fatto pausa). Ore in sede nette = ore in sede − pausa.');
+  para('4) Se nel giorno c\'è un PERMESSO retribuito (es. lutto, visita, ROL), le sue ore si SOMMANO alle ore in sede nette: sono ore pagate come se fossero lavorate. Ore contate = ore in sede nette + permesso. Un giorno con solo il permesso (nessun orario) conta comunque, con le sole ore di permesso.');
+  para('   La differenza del giorno è: ore contate − ' + DUE_TXT + '. Se è positiva sono ore IN PIÙ; se è negativa sono ore IN MENO (da recuperare).');
   para('5) Il risultato finale «ore in più dall\'inizio alla fine» è la SOMMA delle differenze di TUTTI i giorni registrati, dal primo all\'ultimo. I giorni in più compensano quelli in meno.');
   para('6) Ferie e festivi sono giorni non lavorativi: non hanno ore dovute, quindi non creano né ore in più né ore in meno. Nel riepilogo settimanale il target di 38 ore scende di ' + DUE_TXT + ' per ogni giorno di ferie o festivo.');
   para('7) Festivi considerati: Capodanno, Epifania, Pasqua, Pasquetta, 25 aprile, 1 maggio, 2 giugno, Ferragosto, Ognissanti, Immacolata Concezione, Natale, Santo Stefano'
     + (LOCAL_HOLIDAYS.length ? ', ' + LOCAL_HOLIDAYS.map(h => h[0] + '/' + h[1] + ' (' + h[2] + ')').join(', ') : '') + '.');
-  para('8) NON contano nel saldo: i giorni senza entrata e uscita complete, i giorni con uscita non successiva all\'entrata, le ferie e i festivi. Sabato e domenica non sono gestiti dall\'app.');
+  para('8) NON contano nel saldo: i giorni senza entrata e uscita complete (e senza permesso), i giorni con uscita non successiva all\'entrata, le ferie e i festivi. Sabato e domenica non sono gestiti dall\'app.');
   gap();
 
   sec(rr++, '3. UN ESEMPIO PASSO PASSO');
@@ -1208,6 +1368,10 @@ function buildExportWorkbook(EJ) {
   para('   • Differenza: 8h 30m − 7h 36m = +54 minuti  → 54 minuti IN PIÙ');
   para('Martedì: entrata 09:00, uscita 16:00 → 7h 00m − 30 min = 6h 30m → 6h 30m − 7h 36m = −66 minuti  → 66 minuti IN MENO');
   para('Totale dei due giorni: +54 − 66 = −12 minuti  → in totale 12 minuti IN MENO.');
+  para('Mercoledì con permesso al mattino: entrata 13:00, uscita 16:49, permesso 4h 00m, pausa modificata a 0 minuti.');
+  para('   • Ore in sede: 16:49 − 13:00 = 3h 49m;  pausa 0 min → ore in sede nette 3h 49m');
+  para('   • Più il permesso: 3h 49m + 4h 00m = 7h 49m  (ore contate)');
+  para('   • Differenza: 7h 49m − 7h 36m = +13 minuti.  Senza il permesso sarebbe stata −3h 47m (3h 49m − 7h 36m).');
   gap();
 
   sec(rr++, '4. SIGNIFICATO DELLE COLONNE — foglio «' + SH_D + '» (una riga per ogni giorno lunedì–venerdì)');
@@ -1217,12 +1381,14 @@ function buildExportWorkbook(EJ) {
   gloss('Tipo di giorno', 'Lavorativo, Ferie oppure Festivo (con il nome della festa).');
   gloss('Entrata / Uscita', 'Gli orari che hai inserito nell\'app. Restano vuoti per ferie e festivi.');
   gloss('Presenza in sede', 'Uscita − Entrata. È il tempo trascorso al lavoro, pausa compresa.');
-  gloss('Pausa tolta (min)', 'La pausa pranzo detratta, presa dal parametro «Pausa pranzo» (30 minuti).');
-  gloss('Ore lavorate nette', 'Presenza in sede − pausa. Sono le ore realmente lavorate.');
+  gloss('Pausa tolta (min)', 'La pausa detratta: quella standard (parametro «Pausa pranzo standard») oppure quella che hai scritto a mano per quel giorno (cella evidenziata in giallo).');
+  gloss('Ore in sede nette', 'Presenza in sede − pausa. Sono le ore effettivamente passate al lavoro.');
+  gloss('Permesso', 'Ore di permesso retribuito di quel giorno (lutto, visita, ROL…). Si sommano alle ore in sede nette. Vuoto/0:00 = nessun permesso. Le celle sono scritte a mano, puoi correggerle.');
+  gloss('Ore contate (nette + permesso)', 'Ore in sede nette + permesso. Sono le ore che vengono confrontate con quelle dovute.');
   gloss('Ore dovute del giorno', 'Le ore che avresti dovuto fare quel giorno: ' + DUE_TXT + ' (38 ore ÷ 5).');
-  gloss('Differenza (minuti)', '(Ore lavorate nette − Ore dovute) espressa in minuti. Positivo = ore in più, negativo = ore in meno.');
+  gloss('Differenza (minuti)', '(Ore contate − Ore dovute) espressa in minuti. Positivo = ore in più, negativo = ore in meno.');
   gloss('Differenza (ore e minuti)', 'La stessa differenza scritta in modo leggibile, es. +0h 54m oppure −1h 06m.');
-  gloss('Conta nel saldo?', 'SÌ solo se entrata e uscita sono presenti e l\'uscita è dopo l\'entrata. Altrimenti NO e la riga non entra nei totali.');
+  gloss('Conta nel saldo?', 'SÌ se entrata e uscita sono presenti e l\'uscita è dopo l\'entrata, oppure se non ci sono orari ma c\'è un permesso. Altrimenti NO e la riga non entra nei totali.');
   gloss('Spiegazione del calcolo', 'Una frase che racconta il calcolo di quella riga con i numeri veri.');
   gap();
   sec(rr++, '5. SIGNIFICATO DELLE COLONNE — foglio «' + SH_W + '» (una riga per ogni settimana)');
@@ -1230,53 +1396,68 @@ function buildExportWorkbook(EJ) {
   gloss('Giorni da lavorare', '5 − festivi − ferie.');
   gloss('Giorni con orari validi', 'Quanti giorni hanno entrata e uscita corrette (quelli che entrano nel calcolo).');
   gloss('Obiettivo settimana', 'Giorni da lavorare × ' + DUE_TXT + '. Con 5 giorni da lavorare sono 38h 00m; ogni festivo o ferie toglie ' + DUE_TXT + '.');
-  gloss('Ore lavorate', 'Somma delle ore lavorate nette dei giorni con orari validi.');
+  gloss('Ore lavorate (permessi inclusi)', 'Somma delle ore contate (ore in sede nette + permessi) dei giorni validi.');
   gloss('Ore dovute (giorni registrati)', 'Giorni con orari validi × ' + DUE_TXT + '. È il confronto corretto per le ore lavorate della colonna precedente.');
   gloss('Ore in più/meno', 'Somma delle differenze dei giorni della settimana, in minuti e in ore e minuti.');
   gloss('Settimana completa?', 'SÌ se ogni giorno da lavorare ha gli orari inseriti; altrimenti indica quanti giorni mancano.');
   gap();
   sec(rr++, '6. COSA SIGNIFICA OGNI RIGA DEL FOGLIO «' + SH_R + '»');
   gloss('Ore in più / in meno', 'Il risultato finale: somma delle differenze di tutti i giorni validi, dal primo all\'ultimo. È lo stesso numero in testo, in minuti e in ore decimali.');
-  gloss('Come si arriva al numero', 'Giorni validi, ore lavorate in quei giorni, ore dovute in quei giorni e la loro differenza. In fondo una riga di controllo dice se i totali coincidono.');
+  gloss('Come si arriva al numero', 'Giorni validi, ore contate in quei giorni (con il dettaglio ore in sede + permessi), ore dovute e la loro differenza. In fondo una riga di controllo dice se i totali coincidono.');
+  gloss('Effetto dei permessi', 'Quanti giorni hanno un permesso e come sarebbe il saldo se i permessi NON fossero contati, per capire quanto incidono.');
   gloss('Giorni sopra / sotto', 'Quanti giorni hai superato le 7h 36m e di quanto in totale, e quanti giorni sei rimasto sotto e di quanto in totale. La differenza tra i due totali è il risultato finale.');
   gloss('Giorni non contati', 'Ferie, festivi e giorni lavorativi senza orari validi. Una riga di controllo verifica che la somma di tutti i giorni torni.');
   gap();
   sec(rr++, '7. LIMITI DA CONOSCERE');
   para('• I dati vengono letti dal browser in cui usi l\'app: gli orari inseriti su un altro telefono o computer non compaiono.');
-  para('• La pausa è fissa a 30 minuti. Se un giorno non la fai o la fai diversa, le ore lavorate risultano diverse dal reale: correggi l\'orario di uscita.');
-  para('• I giorni senza orari non creano debito: se hai fatto un permesso o una malattia, l\'app non li conosce e non li conta.');
+  para('• La pausa è di ' + BREAK + ' minuti se non la modifichi nell\'app per quel giorno (es. 0 in una mezza giornata senza pausa).');
+  para('• Il permesso va inserito tu: l\'app lo conta come ore lavorate, ma non sa se nel tuo contratto quel tipo di permesso sia retribuito o da recuperare. Se un permesso va RECUPERATO, non inserirlo: lascia solo gli orari reali e il debito resta.');
+  para('• I giorni senza orari e senza permesso (es. una malattia) non creano debito: l\'app non li conosce e non li conta.');
   para('• Il file riporta solo i giorni dalla prima all\'ultima settimana in cui hai inserito degli orari.');
 
   // =================== DETTAGLIO GIORNI ===================
+  // colonne: A N. · B Settimana · C Giorno · D Data · E Tipo · F Entrata · G Uscita · H Presenza · I Pausa · J Ore in sede nette
+  //          K Permesso · L Ore contate · M Ore dovute · N Differenza (min) · O Differenza (testo) · P Conta nel saldo? · Q Spiegazione
   wsD.columns = [{ width: 6 }, { width: 11 }, { width: 12 }, { width: 12 }, { width: 28 }, { width: 9 }, { width: 9 },
-                 { width: 14 }, { width: 11 }, { width: 15 }, { width: 13 }, { width: 14 }, { width: 15 }, { width: 11 }, { width: 100 }];
-  title(wsD, 'A1', 'DETTAGLIO GIORNO PER GIORNO', 'O1');
-  note(wsD, 'A2', 'Ogni riga è un giorno lavorativo (lunedì–venerdì). Leggi la colonna «Spiegazione del calcolo» per capire come si arriva al numero. Le colonne H–M sono formule: clicca su una cella per vederle.', 'O2', 200);
-  note(wsD, 'A3', 'Colori:  verde = ore in più  ·  rosso = ore in meno  ·  blu = ferie  ·  arancione = festivo  ·  grigio = non conta nel saldo (orari mancanti o non validi).', 'O3', 200);
+                 { width: 14 }, { width: 11 }, { width: 15 }, { width: 12 }, { width: 14 }, { width: 13 }, { width: 14 },
+                 { width: 15 }, { width: 11 }, { width: 100 }];
+  title(wsD, 'A1', 'DETTAGLIO GIORNO PER GIORNO', 'Q1');
+  note(wsD, 'A2', 'Ogni riga è un giorno lavorativo (lunedì–venerdì). Leggi la colonna «Spiegazione del calcolo» per capire come si arriva al numero. Le colonne H–J e L–P sono formule: clicca su una cella per vederle. Permesso (K) e le pause modificate (I in giallo) sono valori scritti a mano.', 'Q2', 200);
+  note(wsD, 'A3', 'Colori:  verde = ore in più  ·  rosso = ore in meno  ·  blu = ferie  ·  arancione = festivo  ·  grigio = non conta nel saldo (orari mancanti o non validi)  ·  giallo = pausa modificata a mano.', 'Q3', 200);
   headRow(wsD, 4, ['N.', 'Settimana', 'Giorno', 'Data', 'Tipo di giorno', 'Entrata', 'Uscita',
-                   'Presenza in sede (uscita − entrata)', 'Pausa tolta (min)', 'Ore lavorate nette (presenza − pausa)',
+                   'Presenza in sede (uscita − entrata)', 'Pausa tolta (min)', 'Ore in sede nette (presenza − pausa)',
+                   'Permesso (ore retribuite)', 'Ore contate (nette + permesso)',
                    'Ore dovute del giorno', 'Differenza (minuti)', 'Differenza (ore e minuti)', 'Conta nel saldo?',
                    'Spiegazione del calcolo']);
 
   days.forEach((x, i) => {
     const r = 5 + i;
-    const ok = x.status === 'ok', off = x.status === 'off';
+    const ok = isCounted(x), off = x.status === 'off';
+    const c = x.calc;
     const diff = ok ? x.worked - DUE : null;
-    const V = '$N' + r + '="SÌ"';
-    const set = (col, value, f) => { const c = wsD.getCell(col + r); c.value = value; if (f) c.numFmt = f; return c; };
+    const V = '$P' + r + '="SÌ"';
+    const set = (col, value, f) => { const cell = wsD.getCell(col + r); cell.value = value; if (f) cell.numFmt = f; return cell; };
     set('A', x.n); set('B', x.label); set('C', x.dayName);
     set('D', excelSerial(x.d), 'dd/mm/yyyy');
     set('E', off ? (x.info.type === 'ferie' ? 'Ferie' : 'Festivo – ' + x.info.label) : 'Lavorativo');
     if (!off && x.raw.entry) set('F', x.e / 1440, 'hh:mm');
     if (!off && x.raw.exit) set('G', x.u / 1440, 'hh:mm');
-    set('H', { formula: 'IF(' + V + ',G' + r + '-F' + r + ',"")', result: ok ? (x.u - x.e) / 1440 : '' }, FMT_DUR);
-    set('I', { formula: 'IF(' + V + ',PAUSA_MIN,"")', result: ok ? BREAK : '' }, '0');
-    set('J', { formula: 'IF(' + V + ',MAX(0,H' + r + '-I' + r + '/1440),"")', result: ok ? x.worked / 1440 : '' }, FMT_DUR);
-    set('K', { formula: 'IF(' + V + ',ORE_GIORNO,"")', result: ok ? DUE / 1440 : '' }, FMT_DUR);
-    set('L', { formula: 'IF(' + V + ',ROUND((J' + r + '-K' + r + ')*1440,0),"")', result: ok ? diff : '' }, FMT_MIN);
-    set('M', { formula: 'IF(' + V + ',' + signedFormula('L' + r) + ',"")', result: ok ? fmtSigned(diff) : '' });
-    set('N', { formula: 'IF(AND(ISNUMBER(F' + r + '),ISNUMBER(G' + r + '),G' + r + '>F' + r + '),"SÌ","NO")', result: ok ? 'SÌ' : 'NO' });
-    set('O', explainDay(x));
+    set('H', { formula: 'IF(' + V + ',IF(ISNUMBER(G' + r + '),G' + r + '-F' + r + ',0),"")', result: ok ? c.presence / 1440 : '' }, FMT_DUR);
+    const manualBreak = ok && !c.onlyPermesso && x.raw.pausa !== null;
+    if (manualBreak) {
+      // pausa modificata a mano: valore fisso (modificabile), evidenziato in giallo
+      set('I', x.raw.pausa, '0').fill = solid('FFFFF2A8');
+    } else {
+      set('I', { formula: 'IF(' + V + ',IF(ISNUMBER(F' + r + '),PAUSA_MIN,0),"")', result: ok ? c.pausa : '' }, '0');
+    }
+    set('J', { formula: 'IF(' + V + ',MAX(0,H' + r + '-I' + r + '/1440),"")', result: ok ? c.net / 1440 : '' }, FMT_DUR);
+    if (!off) set('K', (x.raw.permesso || 0) / 1440, FMT_DUR);
+    set('L', { formula: 'IF(' + V + ',J' + r + '+K' + r + ',"")', result: ok ? x.worked / 1440 : '' }, FMT_DUR);
+    set('M', { formula: 'IF(' + V + ',ORE_GIORNO,"")', result: ok ? DUE / 1440 : '' }, FMT_DUR);
+    set('N', { formula: 'IF(' + V + ',ROUND((L' + r + '-M' + r + ')*1440,0),"")', result: ok ? diff : '' }, FMT_MIN);
+    set('O', { formula: 'IF(' + V + ',' + signedFormula('N' + r) + ',"")', result: ok ? fmtSigned(diff) : '' });
+    set('P', { formula: 'IF(OR(AND(ISNUMBER(F' + r + '),ISNUMBER(G' + r + '),G' + r + '>F' + r + '),AND(NOT(ISNUMBER(F' + r + ')),NOT(ISNUMBER(G' + r + ')),K' + r + '>0)),"SÌ","NO")', result: ok ? 'SÌ' : 'NO' });
+    set('Q', explainDay(x));
 
     let bg = null;
     if (off) bg = x.info.type === 'ferie' ? EX.blue : EX.orange;
@@ -1284,16 +1465,16 @@ function buildExportWorkbook(EJ) {
     else if (diff > 0) bg = EX.green;
     else if (diff < 0) bg = EX.red;
     const firstOfWeek = i % 5 === 0;
-    for (let c = 1; c <= 15; c++) {
-      const cell = wsD.getCell(r, c);
-      if (bg) cell.fill = solid(bg);
-      cell.alignment = c === 15 ? { wrapText: true, vertical: 'middle' } : { horizontal: 'center', vertical: 'middle' };
+    for (let col = 1; col <= 17; col++) {
+      const cell = wsD.getCell(r, col);
+      if (bg && !(manualBreak && col === 9)) cell.fill = solid(bg);
+      cell.alignment = col === 17 ? { wrapText: true, vertical: 'middle' } : { horizontal: 'center', vertical: 'middle' };
       cell.border = { top: firstOfWeek ? { style: 'medium', color: { argb: 'FF8888AA' } } : thin, bottom: thin, left: thin, right: thin };
     }
     wsD.getCell('E' + r).alignment = { horizontal: 'left', vertical: 'middle' };
     wsD.getRow(r).height = rowHeight(explainDay(x), 105);
   });
-  wsD.autoFilter = 'A4:O' + lastD;
+  wsD.autoFilter = 'A4:Q' + lastD;
   wsD.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
   // =================== RIEPILOGO SETTIMANE ===================
@@ -1304,7 +1485,7 @@ function buildExportWorkbook(EJ) {
   note(wsW, 'A2', 'Ogni riga è una settimana. I numeri sono formule che sommano le righe del foglio «' + SH_D + '». L\'ultima riga è il totale dall\'inizio alla fine.', 'O2', 200);
   note(wsW, 'A3', 'Nota: «Obiettivo settimana» è quello che dovresti fare nella settimana (38h meno ' + DUE_TXT + ' per ogni festivo o ferie). «Ore dovute (giorni registrati)» considera solo i giorni con orari validi, ed è il confronto usato per le ore in più/meno.', 'O3', 200);
   headRow(wsW, 4, ['N.', 'Settimana', 'Dal (lunedì)', 'Al (venerdì)', 'Giorni festivi', 'Giorni ferie', 'Giorni da lavorare',
-                   'Giorni con orari validi', 'Obiettivo settimana', 'Ore lavorate', 'Ore dovute (giorni registrati)',
+                   'Giorni con orari validi', 'Obiettivo settimana', 'Ore lavorate (permessi inclusi)', 'Ore dovute (giorni registrati)',
                    'Ore in più/meno (minuti)', 'Ore in più/meno (ore e minuti)', 'Settimana completa?', 'Spiegazione del calcolo']);
   const inWeek = r => D('D') + ',">="&$C' + r + ',' + D('D') + ',"<="&$D' + r;
   let tFest = 0, tFerie = 0, tLav = 0, tValid = 0, tObj = 0, tWork = 0, tDue = 0;
@@ -1320,11 +1501,11 @@ function buildExportWorkbook(EJ) {
     set('E', { formula: 'COUNTIFS(' + inWeek(r) + ',' + D('E') + ',"Festivo*")', result: w.festivi });
     set('F', { formula: 'COUNTIFS(' + inWeek(r) + ',' + D('E') + ',"Ferie")', result: w.ferie });
     set('G', { formula: 'GIORNI_SETT-E' + r + '-F' + r, result: lav });
-    set('H', { formula: 'COUNTIFS(' + inWeek(r) + ',' + D('N') + ',"SÌ")', result: w.valid });
+    set('H', { formula: 'COUNTIFS(' + inWeek(r) + ',' + D('P') + ',"SÌ")', result: w.valid });
     set('I', { formula: 'G' + r + '*ORE_GIORNO', result: lav * DUE / 1440 }, FMT_DUR);
-    set('J', { formula: 'SUMIFS(' + D('J') + ',' + inWeek(r) + ')', result: w.worked / 1440 }, FMT_DUR);
+    set('J', { formula: 'SUMIFS(' + D('L') + ',' + inWeek(r) + ')', result: w.worked / 1440 }, FMT_DUR);
     set('K', { formula: 'H' + r + '*ORE_GIORNO', result: due / 1440 }, FMT_DUR);
-    set('L', { formula: 'SUMIFS(' + D('L') + ',' + inWeek(r) + ')', result: diff }, FMT_MIN);
+    set('L', { formula: 'SUMIFS(' + D('N') + ',' + inWeek(r) + ')', result: diff }, FMT_MIN);
     set('M', { formula: signedFormula('L' + r), result: fmtSigned(diff) });
     const miss = lav - w.valid;
     set('N', { formula: 'IF(H' + r + '=G' + r + ',"SÌ","NO – "&(G' + r + '-H' + r + ')&IF(G' + r + '-H' + r + '=1," giorno"," giorni")&" senza orari")',
@@ -1395,6 +1576,8 @@ function buildExportWorkbook(EJ) {
   function al_(d) { return ' al ' + fmtFullDate(d); }
 
   const sumWork = counted.reduce((s, x) => s + x.worked, 0);
+  const sumPerm = counted.reduce((s, x) => s + x.calc.permesso, 0);
+  const sumNet = sumWork - sumPerm;
   const totMin = sumWork - counted.length * DUE;
   const above = counted.filter(x => x.worked > DUE), below = counted.filter(x => x.worked < DUE);
   const plusMin = above.reduce((s, x) => s + (x.worked - DUE), 0);
@@ -1402,7 +1585,10 @@ function buildExportWorkbook(EJ) {
   const exact = counted.length - above.length - below.length;
   const nFerie = days.filter(x => x.status === 'off' && x.info.type === 'ferie').length;
   const nFest = days.filter(x => x.status === 'off' && x.info.type === 'festivo').length;
-  const nNoHours = days.filter(x => x.status !== 'off' && x.status !== 'ok').length;
+  const nNoHours = days.filter(x => x.status !== 'off' && !isCounted(x)).length;
+  const permDays = counted.filter(x => x.calc.permesso > 0);
+  // effetto di permesso/pausa sul saldo rispetto al calcolo normale (permesso + pausa standard − pausa usata)
+  const effectOf = x => !isCounted(x) ? 0 : x.calc.onlyPermesso ? x.calc.permesso : x.calc.permesso + (BREAK - x.calc.pausa);
 
   const row = (r, label, value, f, expl, opt) => {
     const a = wsR.getCell('A' + r); a.value = label; a.font = { bold: true }; a.alignment = { vertical: 'middle', wrapText: true };
@@ -1428,46 +1614,120 @@ function buildExportWorkbook(EJ) {
   row(4, totMin >= 0 ? 'ORE IN PIÙ DALL\'INIZIO ALLA FINE' : 'ORE IN MENO DALL\'INIZIO ALLA FINE',
       { formula: signedFormula('B5'), result: fmtSigned(totMin) }, null,
       'Somma delle differenze di tutti i giorni validi, dal primo all\'ultimo. Positivo = ore in più, negativo = ore in meno da recuperare.', { big: true });
-  row(5, 'Lo stesso risultato in minuti', { formula: 'SUM(' + D('L') + ')', result: totMin }, FMT_MIN,
+  row(5, 'Lo stesso risultato in minuti', { formula: 'SUM(' + D('N') + ')', result: totMin }, FMT_MIN,
       'Somma della colonna «Differenza (minuti)» del foglio «' + SH_D + '».');
   row(6, 'Lo stesso risultato in ore decimali', { formula: 'B5/60', result: totMin / 60 }, '+0.00" ore";-0.00" ore";0.00" ore"',
       'Minuti ÷ 60. Utile per altri calcoli: ' + fmtSigned(totMin) + ' = ' + (totMin / 60).toFixed(2) + ' ore.');
 
   rsec(8, 'COME SI ARRIVA A QUESTO NUMERO');
-  row(9, 'Giorni con orari validi (contati)', { formula: 'COUNTIF(' + D('N') + ',"SÌ")', result: counted.length }, '0',
-      'Giorni lavorativi con entrata e uscita corrette: sono gli unici che entrano nel calcolo.');
-  row(10, 'Ore lavorate in quei giorni', { formula: 'SUMIF(' + D('N') + ',"SÌ",' + D('J') + ')', result: sumWork / 1440 }, FMT_DUR,
-      'Somma delle ore lavorate nette (pausa già tolta) = ' + minToHM(sumWork) + '.');
-  row(11, 'Ore dovute in quei giorni', { formula: 'B9*ORE_GIORNO', result: counted.length * DUE / 1440 }, FMT_DUR,
+  row(9, 'Giorni con orari validi (contati)', { formula: 'COUNTIF(' + D('P') + ',"SÌ")', result: counted.length }, '0',
+      'Giorni lavorativi con entrata e uscita corrette (o con un permesso): sono gli unici che entrano nel calcolo.');
+  row(10, 'Ore contate in quei giorni (permessi inclusi)', { formula: 'SUMIF(' + D('P') + ',"SÌ",' + D('L') + ')', result: sumWork / 1440 }, FMT_DUR,
+      'Somma delle ore contate = ore in sede nette + permessi = ' + minToHM(sumWork) + '.');
+  row(11, '   di cui ore in sede (pausa già tolta)', { formula: 'SUMIF(' + D('P') + ',"SÌ",' + D('J') + ')', result: sumNet / 1440 }, FMT_DUR,
+      'Ore realmente passate al lavoro = ' + minToHM(sumNet) + '.');
+  row(12, '   di cui ore di permesso', { formula: 'SUMIF(' + D('P') + ',"SÌ",' + D('K') + ')', result: sumPerm / 1440 }, FMT_DUR,
+      'Ore di permesso retribuito contate come lavorate = ' + minToHM(sumPerm) + '.');
+  row(13, 'Ore dovute in quei giorni', { formula: 'B9*ORE_GIORNO', result: counted.length * DUE / 1440 }, FMT_DUR,
       counted.length + ' giorni × ' + DUE_TXT + ' = ' + minToHM(counted.length * DUE) + '.');
-  row(12, 'Differenza (lavorate − dovute)', { formula: 'ROUND((B10-B11)*1440,0)', result: totMin }, FMT_MIN,
+  row(14, 'Differenza (contate − dovute)', { formula: 'ROUND((B10-B13)*1440,0)', result: totMin }, FMT_MIN,
       minToHM(sumWork) + ' − ' + minToHM(counted.length * DUE) + ' = ' + fmtSigned(totMin) + '. Deve coincidere con il risultato in alto.');
-  row(13, 'Controllo', { formula: 'IF(ABS((B10-B11)*1440-B5)<0.5,"OK ✓","⚠ CONTROLLARE")', result: 'OK ✓' }, null,
-      'Verifica che «lavorate − dovute» sia uguale alla somma delle differenze giorno per giorno.');
+  row(15, 'Controllo', { formula: 'IF(AND(ABS((B10-B13)*1440-B5)<0.5,ABS((B11+B12-B10)*1440)<0.5),"OK ✓","⚠ CONTROLLARE")', result: 'OK ✓' }, null,
+      'Verifica che «contate − dovute» sia uguale alla somma delle differenze giorno per giorno e che ore in sede + permessi = ore contate.');
 
-  rsec(15, 'DETTAGLIO: GIORNI SOPRA E SOTTO LE ' + DUE_TXT);
-  row(16, 'Giorni sopra ' + DUE_TXT, { formula: 'COUNTIF(' + D('L') + ',">0")', result: above.length }, '0',
-      'Giorni in cui hai lavorato più di ' + DUE_TXT + '.');
-  row(17, 'Minuti guadagnati nei giorni sopra', { formula: 'SUMIF(' + D('L') + ',">0")', result: plusMin }, FMT_MIN,
+  rsec(17, 'DETTAGLIO: GIORNI SOPRA E SOTTO LE ' + DUE_TXT);
+  row(18, 'Giorni sopra ' + DUE_TXT, { formula: 'COUNTIF(' + D('N') + ',">0")', result: above.length }, '0',
+      'Giorni in cui hai fatto (permessi inclusi) più di ' + DUE_TXT + '.');
+  row(19, 'Minuti guadagnati nei giorni sopra', { formula: 'SUMIF(' + D('N') + ',">0")', result: plusMin }, FMT_MIN,
       'Somma dei minuti in più di quei giorni = ' + fmtSigned(plusMin) + '.');
-  row(18, 'Giorni sotto ' + DUE_TXT, { formula: 'COUNTIF(' + D('L') + ',"<0")', result: below.length }, '0',
-      'Giorni in cui hai lavorato meno di ' + DUE_TXT + '.');
-  row(19, 'Minuti persi nei giorni sotto', { formula: 'SUMIF(' + D('L') + ',"<0")', result: minusMin }, FMT_MIN,
+  row(20, 'Giorni sotto ' + DUE_TXT, { formula: 'COUNTIF(' + D('N') + ',"<0")', result: below.length }, '0',
+      'Giorni in cui hai fatto (permessi inclusi) meno di ' + DUE_TXT + '.');
+  row(21, 'Minuti persi nei giorni sotto', { formula: 'SUMIF(' + D('N') + ',"<0")', result: minusMin }, FMT_MIN,
       'Somma dei minuti in meno di quei giorni = ' + fmtSigned(minusMin) + '. I giorni sopra e quelli sotto si compensano: ' + fmtSigned(plusMin) + ' ' + (minusMin < 0 ? '−' : '+') + ' ' + minToHM(minusMin) + ' = ' + fmtSigned(totMin) + '.');
-  row(20, 'Giorni esattamente ' + DUE_TXT, { formula: 'COUNTIF(' + D('L') + ',0)', result: exact }, '0',
+  row(22, 'Giorni esattamente ' + DUE_TXT, { formula: 'COUNTIF(' + D('N') + ',0)', result: exact }, '0',
       'Giorni con differenza zero.');
 
-  rsec(22, 'GIORNI NON CONTATI NEL SALDO');
-  row(23, 'Giorni di ferie', { formula: 'COUNTIF(' + D('E') + ',"Ferie")', result: nFerie }, '0',
+  rsec(24, 'GIORNI NON CONTATI NEL SALDO');
+  row(25, 'Giorni di ferie', { formula: 'COUNTIF(' + D('E') + ',"Ferie")', result: nFerie }, '0',
       'Non si lavora: ore dovute 0.');
-  row(24, 'Giorni festivi', { formula: 'COUNTIF(' + D('E') + ',"Festivo*")', result: nFest }, '0',
+  row(26, 'Giorni festivi', { formula: 'COUNTIF(' + D('E') + ',"Festivo*")', result: nFest }, '0',
       'Festivi che cadono dal lunedì al venerdì: ore dovute 0.');
-  row(25, 'Giorni lavorativi senza orari validi', { formula: 'COUNTIFS(' + D('E') + ',"Lavorativo",' + D('N') + ',"NO")', result: nNoHours }, '0',
-      'Giorni lavorativi con orari mancanti, incompleti o non validi (o non ancora arrivati): non creano né ore in più né ore in meno.');
-  row(26, 'Totale giorni lunedì–venerdì nel periodo', { formula: 'COUNT(' + D('A') + ')', result: nD }, '0',
+  row(27, 'Giorni lavorativi senza orari validi', { formula: 'COUNTIFS(' + D('E') + ',"Lavorativo",' + D('P') + ',"NO")', result: nNoHours }, '0',
+      'Giorni lavorativi con orari mancanti, incompleti o non validi (o non ancora arrivati) e senza permesso: non creano né ore in più né ore in meno.');
+  row(28, 'Totale giorni lunedì–venerdì nel periodo', { formula: 'COUNT(' + D('A') + ')', result: nD }, '0',
       'Tutte le righe del foglio «' + SH_D + '».');
-  row(27, 'Controllo', { formula: 'IF(B9+B23+B24+B25=B26,"OK ✓","⚠ CONTROLLARE")', result: 'OK ✓' }, null,
+  row(29, 'Controllo', { formula: 'IF(B9+B25+B26+B27=B28,"OK ✓","⚠ CONTROLLARE")', result: 'OK ✓' }, null,
       'Giorni contati + ferie + festivi + giorni senza orari deve essere uguale al totale dei giorni.');
+
+  rsec(31, 'EFFETTO DEI PERMESSI');
+  row(32, 'Giorni con un permesso', { formula: 'COUNTIFS(' + D('P') + ',"SÌ",' + D('K') + ',">0")', result: permDays.length }, '0',
+      'Giorni contati in cui hai inserito ore di permesso (dettaglio nel foglio «' + SH_P + '»).');
+  row(33, 'Saldo SENZA contare i permessi (in minuti)', { formula: 'B5-ROUND(B12*1440,0)', result: totMin - sumPerm }, FMT_MIN,
+      'Per confronto: ' + fmtSigned(totMin) + ' − ' + minToHM(sumPerm) + ' di permessi = ' + fmtSigned(totMin - sumPerm) + '. Mostra quanto incidono i permessi sul risultato.');
+
+  // =================== PERMESSI E PAUSE ===================
+  wsP.columns = [{ width: 12 }, { width: 13 }, { width: 9 }, { width: 9 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 100 }];
+  title(wsP, 'A1', 'PERMESSI E PAUSE MODIFICATE', 'I1');
+  note(wsP, 'A2', 'Elenco dei giorni in cui hai inserito un permesso o hai cambiato la pausa rispetto allo standard (' + BREAK + ' min). Servono a capire cosa è stato aggiunto o tolto rispetto al calcolo normale.', 'I2', 190);
+  headRow(wsP, 4, ['Data', 'Giorno', 'Entrata', 'Uscita', 'Permesso (ore retribuite)', 'Pausa usata (min)', 'Pausa standard (min)',
+                   'Effetto sul saldo rispetto al calcolo normale (min)', 'Spiegazione']);
+  const special = days.filter(x => x.status !== 'off' && (x.raw.permesso > 0 || x.raw.pausa !== null && x.raw.pausa !== BREAK));
+  if (!special.length) {
+    wsP.getCell('A5').value = 'Nessun permesso e nessuna pausa modificata nel periodo.';
+  }
+  special.forEach((x, i) => {
+    const r = 5 + i;
+    const cnt = isCounted(x);
+    const usedBreak = cnt ? x.calc.pausa : (x.raw.pausa !== null ? x.raw.pausa : BREAK);
+    const eff = effectOf(x);
+    const set = (col, value, f) => { const cell = wsP.getCell(col + r); cell.value = value; if (f) cell.numFmt = f; return cell; };
+    set('A', excelSerial(x.d), 'dd/mm/yyyy'); set('B', x.dayName);
+    if (x.raw.entry) set('C', x.e / 1440, 'hh:mm');
+    if (x.raw.exit) set('D', x.u / 1440, 'hh:mm');
+    set('E', (x.raw.permesso || 0) / 1440, FMT_DUR);
+    set('F', usedBreak, '0');
+    set('G', { formula: 'PAUSA_MIN', result: BREAK }, '0');
+    if (cnt) {
+      if (x.calc.onlyPermesso) set('H', { formula: 'ROUND(E' + r + '*1440,0)', result: eff }, FMT_MIN);
+      else set('H', { formula: 'ROUND(E' + r + '*1440,0)+(G' + r + '-F' + r + ')', result: eff }, FMT_MIN);
+    } else {
+      set('H', 0, FMT_MIN);
+    }
+    let expl;
+    if (!cnt) expl = 'Il giorno NON conta nel saldo (orari mancanti o non validi): permesso e pausa non hanno effetto finché l\'orario non è corretto.';
+    else if (x.calc.onlyPermesso) expl = 'Solo permesso di ' + minToHM(x.calc.permesso) + ', nessun orario: il giorno conta ' + minToHM(x.calc.permesso) + ' di ore lavorate (' + fmtSigned(x.calc.permesso - DUE) + ' rispetto al dovuto).';
+    else {
+      const parts = [];
+      if (x.calc.permesso > 0) parts.push('il permesso di ' + minToHM(x.calc.permesso) + ' si somma alle ore lavorate (' + fmtSigned(x.calc.permesso) + ')');
+      if (usedBreak !== BREAK) parts.push('la pausa è ' + usedBreak + ' min invece di ' + BREAK + ' (' + fmtSigned(BREAK - usedBreak) + ')');
+      expl = parts.join('; ') + '. Effetto totale ' + fmtSigned(eff) + '. Il giorno vale ' + fmtSigned(x.worked - DUE) + ' rispetto alle ' + DUE_TXT + ' dovute.';
+    }
+    set('I', expl);
+    for (let c = 1; c <= 9; c++) {
+      const cell = wsP.getCell(r, c);
+      cell.fill = solid(cnt ? 'FFFFF6E0' : EX.grey);
+      cell.alignment = c === 9 ? { wrapText: true, vertical: 'middle' } : { horizontal: 'center', vertical: 'middle' };
+      cell.border = { top: thin, bottom: thin, left: thin, right: thin };
+    }
+    wsP.getRow(r).height = rowHeight(expl, 105);
+  });
+  if (special.length) {
+    const tr = 5 + special.length;
+    wsP.getCell('A' + tr).value = 'TOTALE';
+    const th = wsP.getCell('H' + tr);
+    th.value = { formula: 'SUM(H5:H' + (tr - 1) + ')', result: special.reduce((s, x) => s + effectOf(x), 0) };
+    th.numFmt = FMT_MIN;
+    for (let c = 1; c <= 9; c++) {
+      const cell = wsP.getCell(tr, c);
+      cell.font = { bold: true };
+      cell.fill = solid('FFD8E4F7');
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = { top: { style: 'medium', color: { argb: EX.dark } }, bottom: thin, left: thin, right: thin };
+    }
+    wsP.getCell('I' + tr).value = 'Quanto permessi e pause modificate hanno cambiato il saldo rispetto al calcolo normale.';
+    wsP.getCell('I' + tr).alignment = { wrapText: true, vertical: 'middle' };
+  }
+  wsP.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
   wsR.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
   wsC.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
