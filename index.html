@@ -18,6 +18,7 @@
   --surface2: #16213e;
   --accent: #e94560;
   --green: #00d4aa;
+  --blue: #4da3ff;
   --text: #e8e8f0;
   --text2: #8888aa;
   --text3: #44445a;
@@ -66,6 +67,20 @@ header {
   margin-top: 4px;
 }
 
+/* saldo totale */
+.balance-card {
+  background: linear-gradient(135deg, var(--surface), var(--surface2));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.bal-label { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; color: var(--text2); }
+.bal-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.bal-val { font-family: var(--mono); font-size: 30px; font-weight: 700; line-height: 1; }
+.bal-dec { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+.bal-sub { font-family: var(--mono); font-size: 10px; color: var(--text2); margin-top: 10px; line-height: 1.5; }
+
 .week-nav {
   display: flex;
   align-items: center;
@@ -93,7 +108,6 @@ header {
 .week-title .label { font-weight: 600; font-size: 14px; }
 .week-title .dates { font-family: var(--mono); font-size: 11px; color: var(--text2); margin-top: 2px; }
 
-/* festivi banner */
 .holiday-banner {
   display: flex;
   align-items: center;
@@ -157,6 +171,12 @@ header {
   opacity: 0.85;
 }
 .day-card.holiday .day-name { color: var(--accent); }
+.day-card.ferie {
+  border-color: rgba(77,163,255,0.3);
+  background: rgba(77,163,255,0.05);
+  opacity: 0.9;
+}
+.day-card.ferie .day-name { color: var(--blue); }
 
 .day-header {
   display: flex;
@@ -164,24 +184,25 @@ header {
   align-items: center;
   margin-bottom: 12px;
 }
+.day-card.holiday .day-header, .day-card.ferie .day-header { margin-bottom: 0; }
 .day-name { font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
 .day-date { font-family: var(--mono); font-size: 11px; color: var(--text2); }
-.holiday-label {
+.holiday-label, .ferie-label {
   font-family: var(--mono);
   font-size: 10px;
-  color: var(--accent);
-  background: rgba(233,69,96,0.1);
-  border: 1px solid rgba(233,69,96,0.2);
   border-radius: 20px;
   padding: 2px 8px;
   margin-top: 3px;
   display: inline-block;
 }
+.holiday-label { color: var(--accent); background: rgba(233,69,96,0.1); border: 1px solid rgba(233,69,96,0.2); }
+.ferie-label { color: var(--blue); background: rgba(77,163,255,0.1); border: 1px solid rgba(77,163,255,0.25); }
 .day-result { font-family: var(--mono); font-size: 16px; font-weight: 700; }
 .day-result.pos { color: var(--green); }
 .day-result.neg { color: var(--accent); }
 .day-result.empty { color: var(--text3); }
 .day-result.festivo { color: var(--accent); font-size: 13px; }
+.day-result.ferie { color: var(--blue); font-size: 13px; }
 .day-sub { font-family: var(--mono); font-size: 10px; margin-top: 2px; text-align: right; }
 
 .day-inputs {
@@ -214,10 +235,6 @@ header {
 }
 .input-group input[type="time"]:focus { border-color: var(--accent); }
 .input-group input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
-.input-group input[type="time"]:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
 
 .summary-row {
   display: grid;
@@ -235,29 +252,81 @@ header {
 .stat-val { font-family: var(--mono); font-size: 15px; font-weight: 700; }
 .stat-lbl { font-size: 10px; color: var(--text2); margin-top: 3px; letter-spacing: 0.5px; }
 
+/* ferie */
+.ferie-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.ferie-title { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; color: var(--text2); margin-bottom: 10px; }
+.ferie-empty { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.ferie-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ferie-go {
+  flex: 1;
+  text-align: left;
+  background: rgba(77,163,255,0.08);
+  border: 1px solid rgba(77,163,255,0.25);
+  color: var(--blue);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ferie-del {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  border-radius: 8px;
+  width: 38px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ferie-del:hover { border-color: var(--accent); color: var(--accent); }
+.ferie-add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.ferie-add label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text2);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.ferie-add input[type="date"] {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 8px;
+  color-scheme: dark;
+}
+.ferie-add-btn {
+  grid-column: 1 / -1;
+  background: rgba(77,163,255,0.12);
+  border: 1px solid rgba(77,163,255,0.35);
+  color: var(--blue);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px;
+  cursor: pointer;
+}
+
 .footer-note {
   text-align: center;
   font-family: var(--mono);
   font-size: 10px;
-  color: var(--text3);
+  color: var(--text2);
   margin-bottom: 16px;
   line-height: 1.8;
 }
-.clear-btn {
-  display: block;
-  width: 100%;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text2);
-  font-family: var(--mono);
-  font-size: 12px;
-  padding: 10px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.clear-btn:hover { border-color: var(--accent); color: var(--accent); }
-
 .export-btn {
   display: block;
   width: 100%;
@@ -274,6 +343,20 @@ header {
   transition: opacity 0.15s;
 }
 .export-btn:hover { opacity: 0.85; }
+.clear-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.clear-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 #install-banner {
   display: none;
@@ -301,9 +384,19 @@ header {
   <header>
     <div>
       <div class="logo">TIMBR<span>.</span></div>
-      <div class="week-badge" id="week-badge">W00 · 2025</div>
+      <div class="week-badge" id="week-badge">W00 · 2026</div>
     </div>
   </header>
+
+  <!-- SALDO TOTALE -->
+  <div class="balance-card">
+    <div class="bal-label">SALDO TOTALE ORE (DALL'INIZIO AD OGGI)</div>
+    <div class="bal-row">
+      <div class="bal-val" id="bal-val">0h 00m</div>
+      <div class="bal-dec" id="bal-dec"></div>
+    </div>
+    <div class="bal-sub" id="bal-sub">nessun giorno registrato</div>
+  </div>
 
   <div class="week-nav">
     <button class="nav-btn" id="btn-prev">← PREC</button>
@@ -356,431 +449,610 @@ header {
     </div>
   </div>
 
+  <!-- FERIE -->
+  <div class="ferie-box">
+    <div class="ferie-title">🏖 FERIE</div>
+    <div id="ferie-list"></div>
+    <div class="ferie-add">
+      <div>
+        <label for="ferie-from">Dal</label>
+        <input type="date" id="ferie-from">
+      </div>
+      <div>
+        <label for="ferie-to">Al (incluso)</label>
+        <input type="date" id="ferie-to">
+      </div>
+      <button class="ferie-add-btn" id="ferie-add-btn">+ Aggiungi periodo di ferie</button>
+    </div>
+  </div>
+
   <div class="footer-note">
     Pausa 30' sottratta automaticamente<br>
-    Festivi: target settimanale ridotto proporzionalmente<br>
+    Festivi e ferie: target settimanale ridotto di 7h 36m per giorno<br>
+    Il saldo conta solo i giorni con entrata e uscita inserite<br>
     Dati salvati localmente sul dispositivo
   </div>
   <button class="export-btn" id="export-btn">📊 Esporta tutto in Excel</button>
-  <button class="clear-btn" id="clear-btn">✕ Azzera settimana corrente</button>
+  <button class="clear-btn" id="clear-btn">✕ Azzera settimana visualizzata</button>
 </div>
 
 <button id="install-banner">⬇ Installa app</button>
 
 <script>
-// ---- costanti ----
-const TARGET_WEEK = 38 * 60;
+// ================= COSTANTI =================
+const TARGET_WEEK = 38 * 60;          // 2280 min
 const TARGET_DAY  = TARGET_WEEK / 5;  // 456 min = 7h36m
 const BREAK       = 30;
 const DAYS_IT     = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì'];
 const SHORT_IT    = ['LUN','MAR','MER','GIO','VEN'];
+const FERIE_KEY   = 'ferie-timbr';
+const DEFAULT_FERIE = [{ from: '2026-08-10', to: '2026-08-14' }];
+
+// Festivi locali (giorno, mese, nome). Modifica o cancella a piacere.
+const LOCAL_HOLIDAYS = [
+  [29, 6, 'Santi Pietro e Paolo (patrono di Roma)']
+];
 
 let weekOffset = 0;
+let FERIE = [];
 
-// ---- calcolo Pasqua (algoritmo anonimo gregoriano) ----
-function easterDate(year) {
-  const a = year % 19;
-  const b = Math.floor(year / 100);
-  const c = year % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
-  const h = (19*a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2*e + 2*i - h - k) % 7;
-  const m = Math.floor((a + 11*h + 22*l) / 451);
-  const month = Math.floor((h + l - 7*m + 114) / 31);
-  const day   = ((h + l - 7*m + 114) % 31) + 1;
-  return new Date(year, month-1, day);
-}
-
-// ---- festivi italiani per un anno ----
-function getHolidays(year) {
-  const easter = easterDate(year);
-  const pasquetta = new Date(easter); pasquetta.setDate(pasquetta.getDate()+1);
-
-  const fixed = [
-    [1,  1,  'Capodanno'],
-    [6,  1,  'Epifania'],
-    [25, 4,  'Festa della Liberazione'],
-    [1,  5,  'Festa del Lavoro'],
-    [2,  6,  'Festa della Repubblica'],
-    [15, 8,  'Ferragosto'],
-    [1,  11, 'Ognissanti'],
-    [8,  12, 'Immacolata Concezione'],
-    [25, 12, 'Natale'],
-    [26, 12, 'Santo Stefano'],
-  ].map(([d,m,n]) => ({ date: new Date(year, m-1, d), name: n }));
-
-  fixed.push({ date: easter,    name: 'Pasqua' });
-  fixed.push({ date: pasquetta, name: 'Pasquetta' });
-
-  return fixed;
-}
-
-// ---- chiave: "YYYY-MM-DD" ----
-function dateKey(d) {
-  return d.toISOString().slice(0,10);
-}
-
-// ---- festivo per una data (null se non festivo) ----
-function holidayName(d, holidayMap) {
-  return holidayMap[dateKey(d)] || null;
-}
-
-// ---- helpers data ----
+// ================= DATE (sempre in ora locale) =================
+function pad(n) { return String(n).padStart(2, '0'); }
+function dateKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function parseKey(k) { const p = k.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
 function getMonday(offset) {
   const d = new Date();
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate() - ((d.getDay()+6)%7) + offset*7);
-  return d;
+  d.setHours(0, 0, 0, 0);
+  return addDays(d, -((d.getDay() + 6) % 7) + offset * 7);
 }
-function fmt(d) {
-  return d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'});
-}
-function getWeekNum(d) {
-  const jan1 = new Date(d.getFullYear(),0,1);
-  return Math.ceil(((d-jan1)/86400000 + jan1.getDay()+1)/7);
-}
-function storageKey(offset) {
-  return 'timbr-' + getMonday(offset).toISOString().slice(0,10);
+function fmt(d) { return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }); }
+function fmtFullDate(d) { return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+function fmtFull(key) { return fmtFullDate(parseKey(key)); }
+
+// settimana ISO 8601
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return { w: Math.ceil(((t - y0) / 86400000 + 1) / 7), y: t.getUTCFullYear() };
 }
 
-// ---- storage ----
-function loadWeek(offset) {
+// quante settimane separano la settimana di una data da quella corrente
+function offsetForKey(k) {
+  const d = parseKey(k);
+  const mon = addDays(d, -((d.getDay() + 6) % 7));
+  const cur = getMonday(0);
+  return Math.round((Date.UTC(mon.getFullYear(), mon.getMonth(), mon.getDate()) -
+                     Date.UTC(cur.getFullYear(), cur.getMonth(), cur.getDate())) / 604800000);
+}
+
+// ================= FESTIVI =================
+function easterDate(year) {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function getHolidays(year) {
+  const easter = easterDate(year);
+  const fixed = [
+    [1, 1, 'Capodanno'],
+    [6, 1, 'Epifania'],
+    [25, 4, 'Festa della Liberazione'],
+    [1, 5, 'Festa del Lavoro'],
+    [2, 6, 'Festa della Repubblica'],
+    [15, 8, 'Ferragosto'],
+    [1, 11, 'Ognissanti'],
+    [8, 12, 'Immacolata Concezione'],
+    [25, 12, 'Natale'],
+    [26, 12, 'Santo Stefano']
+  ].concat(LOCAL_HOLIDAYS);
+  const list = fixed.map(x => ({ date: new Date(year, x[1] - 1, x[0]), name: x[2] }));
+  list.push({ date: easter, name: 'Pasqua' });
+  list.push({ date: addDays(easter, 1), name: 'Pasquetta' });
+  return list;
+}
+
+const holidayCache = {};
+function holidayName(d) {
+  const y = d.getFullYear();
+  if (!holidayCache[y]) {
+    const m = {};
+    getHolidays(y).forEach(h => { m[dateKey(h.date)] = h.name; });
+    holidayCache[y] = m;
+  }
+  return holidayCache[y][dateKey(d)] || null;
+}
+
+// ================= FERIE =================
+function loadFerie() {
   try {
-    const raw = localStorage.getItem(storageKey(offset));
-    if (raw) return JSON.parse(raw);
-  } catch(e){}
-  return Array(5).fill(null).map(()=>({entry:'',exit:''}));
+    const raw = localStorage.getItem(FERIE_KEY);
+    if (raw === null) {
+      localStorage.setItem(FERIE_KEY, JSON.stringify(DEFAULT_FERIE));
+      return DEFAULT_FERIE.slice();
+    }
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) {
+      return arr.filter(r => r && /^\d{4}-\d{2}-\d{2}$/.test(r.from) && /^\d{4}-\d{2}-\d{2}$/.test(r.to));
+    }
+  } catch (e) {}
+  return [];
 }
-function saveWeek(offset, data) {
-  try { localStorage.setItem(storageKey(offset), JSON.stringify(data)); } catch(e){}
+function saveFerie(arr) {
+  try { localStorage.setItem(FERIE_KEY, JSON.stringify(arr)); } catch (e) {}
+}
+function isFerie(d) {
+  const k = dateKey(d);
+  return FERIE.some(r => k >= r.from && k <= r.to);
 }
 
-// ---- calc ----
+// stato di un giorno: null = lavorativo
+function dayInfo(d) {
+  const h = holidayName(d);
+  if (h) return { type: 'festivo', label: h };
+  if (isFerie(d)) return { type: 'ferie', label: 'Ferie' };
+  return null;
+}
+
+// ================= STORAGE SETTIMANE =================
+function emptyWeek() { return Array.from({ length: 5 }, () => ({ entry: '', exit: '' })); }
+function weekKeyOf(mon) { return 'timbr-' + dateKey(mon); }
+
+function cleanTime(t) { return (typeof t === 'string' && /^\d{2}:\d{2}$/.test(t)) ? t : ''; }
+
+function loadWeekByKey(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const a = JSON.parse(raw);
+      if (Array.isArray(a) && a.length === 5) {
+        return a.map(x => ({ entry: cleanTime(x && x.entry), exit: cleanTime(x && x.exit) }));
+      }
+    }
+  } catch (e) {}
+  return emptyWeek();
+}
+function saveWeekByKey(key, data) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {}
+}
+
+// tutte le chiavi settimana valide (data = lunedì)
+function allWeekKeys() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (/^timbr-\d{4}-\d{2}-\d{2}$/.test(k) && parseKey(k.slice(6)).getDay() === 1) out.push(k);
+    }
+  } catch (e) {}
+  return out.sort();
+}
+
+// Le vecchie versioni salvavano la chiave col giorno prima (domenica) per un
+// errore di fuso orario: le sposto sul lunedì corretto, senza perdere dati.
+function migrateLegacyKeys() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+    keys.forEach(k => {
+      if (!/^timbr-\d{4}-\d{2}-\d{2}$/.test(k)) return;
+      const d = parseKey(k.slice(6));
+      if (d.getDay() !== 0) return;
+      const nk = 'timbr-' + dateKey(addDays(d, 1));
+      if (localStorage.getItem(nk) === null) {
+        localStorage.setItem(nk, localStorage.getItem(k));
+        localStorage.removeItem(k);
+      }
+    });
+  } catch (e) {}
+}
+
+// ================= CALCOLI =================
 function t2m(t) {
   if (!t) return null;
-  const [h,m] = t.split(':').map(Number);
-  return h*60+m;
+  const p = t.split(':').map(Number);
+  return p[0] * 60 + p[1];
 }
-function minToHM(min, always) {
-  if ((min===null || min===undefined) && !always) return '--:--';
-  const abs = Math.abs(min||0);
-  return Math.floor(abs/60)+'h '+String(abs%60).padStart(2,'0')+'m';
+function minToHM(min) {
+  if (min === null || min === undefined) return '--:--';
+  const abs = Math.abs(min);
+  return Math.floor(abs / 60) + 'h ' + pad(abs % 60) + 'm';
 }
-function calcDay(e,x) {
-  const em=t2m(e), xm=t2m(x);
-  if(em===null||xm===null||xm<=em) return null;
-  return xm-em-BREAK;
+function fmtSigned(min) { return (min >= 0 ? '+' : '−') + minToHM(min); }
+function calcDay(e, x) {
+  const em = t2m(e), xm = t2m(x);
+  if (em === null || xm === null || xm <= em) return null;
+  return Math.max(0, xm - em - BREAK);
 }
 
-// ---- render principale ----
+// statistiche di una settimana (mon = lunedì)
+function weekStats(mon, data) {
+  const days = [];
+  let worked = 0, off = 0, balance = 0, daysCounted = 0;
+  for (let i = 0; i < 5; i++) {
+    const d = addDays(mon, i);
+    const info = dayInfo(d);
+    if (info) {
+      off++;
+      days.push({ d: d, info: info, worked: null });
+      continue;
+    }
+    const w = calcDay(data[i].entry, data[i].exit);
+    if (w !== null) {
+      worked += w;
+      balance += w - TARGET_DAY;
+      daysCounted++;
+    }
+    days.push({ d: d, info: null, worked: w });
+  }
+  const target = TARGET_WEEK - off * TARGET_DAY;
+  return { days: days, worked: worked, target: target, diff: worked - target,
+           balance: balance, daysCounted: daysCounted, off: off };
+}
+
+// saldo cumulativo su tutte le settimane salvate
+function totalBalance() {
+  let balance = 0, days = 0, first = null, last = null;
+  allWeekKeys().forEach(k => {
+    const mon = parseKey(k.slice(6));
+    const st = weekStats(mon, loadWeekByKey(k));
+    st.days.forEach(x => {
+      if (x.worked !== null) {
+        const dk = dateKey(x.d);
+        if (first === null || dk < first) first = dk;
+        if (last === null || dk > last) last = dk;
+      }
+    });
+    balance += st.balance;
+    days += st.daysCounted;
+  });
+  return { balance: balance, days: days, first: first, last: last };
+}
+
+// ================= RENDER =================
 function render() {
   const mon = getMonday(weekOffset);
-  const wn  = getWeekNum(mon);
-  const sun = new Date(mon.getTime()+4*86400000);
-  const year = mon.getFullYear();
+  const fri = addDays(mon, 4);
+  const key = weekKeyOf(mon);
+  const data = loadWeekByKey(key);
+  const st = weekStats(mon, data);
+  const iso = isoWeek(mon);
 
-  // mappa festivi anno corrente (e anno successivo per fine dicembre)
-  const hmap = {};
-  getHolidays(year).forEach(h => { hmap[dateKey(h.date)] = h.name; });
-  if (year !== sun.getFullYear()) {
-    getHolidays(sun.getFullYear()).forEach(h => { hmap[dateKey(h.date)] = h.name; });
-  }
-
-  // festivi che cadono lun-ven in questa settimana
-  const weekDays = Array(5).fill(null).map((_,i) => new Date(mon.getTime()+i*86400000));
-  const weekHolidays = weekDays.map(d => holidayName(d, hmap));
-  const numHolidays  = weekHolidays.filter(Boolean).length;
-
-  // target effettivo settimana
-  const effectiveTarget = TARGET_WEEK - numHolidays * TARGET_DAY;
-
-  // header
-  document.getElementById('week-badge').textContent = 'W'+String(wn).padStart(2,'0')+' · '+year;
+  // header + navigazione
+  document.getElementById('week-badge').textContent = 'W' + pad(iso.w) + ' · ' + iso.y;
   document.getElementById('nav-label').textContent =
-    weekOffset===0 ? 'Settimana corrente' :
-    weekOffset===-1 ? 'Settimana scorsa' :
-    weekOffset < 0 ? Math.abs(weekOffset)+' sett. fa' : 'Settimana +'+weekOffset;
-  document.getElementById('nav-dates').textContent = fmt(mon)+' — '+fmt(sun);
+    weekOffset === 0 ? 'Settimana corrente' :
+    weekOffset === -1 ? 'Settimana scorsa' :
+    Math.abs(weekOffset) + ' sett. fa';
+  document.getElementById('nav-dates').textContent = fmt(mon) + ' — ' + fmt(fri);
   document.getElementById('btn-next').disabled = weekOffset >= 0;
-  document.getElementById('btn-prev').disabled = weekOffset <= -52;
+  document.getElementById('btn-prev').disabled = weekOffset <= -156;
 
-  // banner festivi
+  // saldo totale
+  const tb = totalBalance();
+  const bv = document.getElementById('bal-val');
+  bv.textContent = fmtSigned(tb.balance);
+  bv.style.color = tb.balance > 0 ? 'var(--green)' : tb.balance < 0 ? 'var(--accent)' : 'var(--text)';
+  document.getElementById('bal-dec').textContent = tb.days > 0
+    ? (tb.balance >= 0 ? '+' : '−') + (Math.abs(tb.balance) / 60).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ore'
+    : '';
+  document.getElementById('bal-sub').textContent = tb.days > 0
+    ? tb.days + (tb.days === 1 ? ' giorno registrato' : ' giorni registrati') + ' · dal ' + fmtFull(tb.first) + ' al ' + fmtFull(tb.last)
+    : 'nessun giorno registrato';
+
+  // banner festivi / ferie
+  const fest = st.days.filter(x => x.info && x.info.type === 'festivo').map(x => x.info.label);
+  const nFerie = st.days.filter(x => x.info && x.info.type === 'ferie').length;
   const banner = document.getElementById('holiday-banner');
-  if (numHolidays > 0) {
-    const names = weekHolidays.filter(Boolean).join(', ');
+  if (fest.length || nFerie) {
+    const parts = [];
+    if (fest.length) parts.push((fest.length > 1 ? 'Festivi: ' : 'Festivo: ') + fest.join(', '));
+    if (nFerie) parts.push('Ferie: ' + nFerie + (nFerie > 1 ? ' giorni' : ' giorno'));
     document.getElementById('holiday-banner-text').textContent =
-      numHolidays===1
-        ? `Festivo: ${names} · target ridotto a ${minToHM(effectiveTarget,true)}`
-        : `Festivi: ${names} · target ridotto a ${minToHM(effectiveTarget,true)}`;
+      parts.join(' · ') + ' · target ' + minToHM(st.target);
     banner.style.display = 'flex';
   } else {
     banner.style.display = 'none';
   }
 
-  // dati
-  const data = loadWeek(weekOffset);
-  const todayDow = weekOffset===0 ? (new Date().getDay()+6)%7 : -1;
-
-  const dailyMins = data.map((d,i) => {
-    if (weekHolidays[i]) return 0; // festivo = 0 lavorato, non null
-    return calcDay(d.entry, d.exit);
-  });
-
-  // somma solo giorni non festivi con dati inseriti
-  const total = data.reduce((s,d,i) => {
-    if (weekHolidays[i]) return s;
-    const m = calcDay(d.entry, d.exit);
-    return s + (m ?? 0);
-  }, 0);
-
-  const diff = total - effectiveTarget;
-  const pct  = effectiveTarget > 0 ? Math.min(100, Math.round(total/effectiveTarget*100)) : 100;
-
-  // ring
-  const circ = 2*Math.PI*38;
-  const ringOffset = circ*(1-pct/100);
+  // progresso settimana
+  const pct = st.target > 0 ? Math.min(100, Math.round(st.worked / st.target * 100)) : 100;
+  const circ = 2 * Math.PI * 38;
   const ring = document.getElementById('ring-circle');
-  ring.setAttribute('stroke-dashoffset', ringOffset.toFixed(2));
-  ring.style.stroke = diff>=0 ? 'var(--green)' : 'var(--accent)';
-  document.getElementById('ring-pct').textContent = pct+'%';
+  ring.setAttribute('stroke-dashoffset', (circ * (1 - pct / 100)).toFixed(2));
+  ring.style.stroke = st.diff >= 0 ? 'var(--green)' : 'var(--accent)';
+  document.getElementById('ring-pct').textContent = pct + '%';
 
-  // big hours
   document.getElementById('big-hours').innerHTML =
-    minToHM(total,true)+' <small>/ '+minToHM(effectiveTarget,true)+'</small>';
+    minToHM(st.worked) + ' <small>/ ' + minToHM(st.target) + '</small>';
 
   const dl = document.getElementById('diff-line');
-  if(diff===0){
-    dl.className='diff-line diff-zero'; dl.textContent='— in linea con il target';
-  } else if(diff>0){
-    dl.className='diff-line diff-pos'; dl.textContent='↑ +'+minToHM(diff)+' straordinario';
-  } else {
-    dl.className='diff-line diff-neg'; dl.textContent='↓ mancano '+minToHM(-diff);
-  }
+  if (st.diff === 0) { dl.className = 'diff-line diff-zero'; dl.textContent = '— in linea con il target'; }
+  else if (st.diff > 0) { dl.className = 'diff-line diff-pos'; dl.textContent = '↑ +' + minToHM(st.diff) + ' straordinario'; }
+  else { dl.className = 'diff-line diff-neg'; dl.textContent = '↓ mancano ' + minToHM(-st.diff); }
 
-  const targLabel = numHolidays > 0
-    ? `TARGET: ${minToHM(effectiveTarget,true)} (−${numHolidays} festiv${numHolidays>1?'i':'o'}) · pausa: 30'`
-    : `TARGET: 38h 00m · pausa: 30'`;
-  document.getElementById('target-line').textContent = targLabel;
+  document.getElementById('target-line').textContent = st.off > 0
+    ? 'TARGET: ' + minToHM(st.target) + ' (−' + st.off + (st.off > 1 ? ' giorni' : ' giorno') + ') · pausa: 30\''
+    : 'TARGET: 38h 00m · pausa: 30\'';
 
-  // summary
-  document.getElementById('s-worked').textContent = minToHM(total,true);
-  document.getElementById('s-target').textContent = minToHM(effectiveTarget,true);
+  document.getElementById('s-worked').textContent = minToHM(st.worked);
+  document.getElementById('s-target').textContent = minToHM(st.target);
   const sd = document.getElementById('s-diff');
   const sl = document.getElementById('s-diff-lbl');
-  if(diff>=0){
-    sd.textContent=minToHM(diff,true); sd.style.color='var(--green)'; sl.textContent='STRAORD.';
-  } else {
-    sd.textContent=minToHM(-diff,true); sd.style.color='var(--accent)'; sl.textContent='RIMANENTI';
-  }
+  if (st.diff >= 0) { sd.textContent = minToHM(st.diff); sd.style.color = 'var(--green)'; sl.textContent = 'STRAORD.'; }
+  else { sd.textContent = minToHM(-st.diff); sd.style.color = 'var(--accent)'; sl.textContent = 'RIMANENTI'; }
 
-  // cards giorni
+  // card dei giorni
+  const todayDow = weekOffset === 0 ? (new Date().getDay() + 6) % 7 : -1;
   const list = document.getElementById('days-list');
   list.innerHTML = '';
 
-  data.forEach((day,i) => {
-    const isHoliday = !!weekHolidays[i];
-    const worked    = isHoliday ? null : calcDay(day.entry, day.exit);
-    const dayDate   = weekDays[i];
-    const isToday   = todayDow===i;
-    const dayDiff   = worked!==null ? worked-TARGET_DAY : null;
+  st.days.forEach((x, i) => {
+    const isOff = !!x.info;
+    const isFerieDay = isOff && x.info.type === 'ferie';
+    const isToday = todayDow === i;
+    const dayDiff = x.worked !== null ? x.worked - TARGET_DAY : null;
 
     let cardClass = 'day-card';
-    if(isToday && !isHoliday) cardClass += ' today';
-    if(isHoliday) cardClass += ' holiday';
+    if (isToday && !isOff) cardClass += ' today';
+    if (isOff) cardClass += isFerieDay ? ' ferie' : ' holiday';
 
     let resultClass = 'day-result empty';
-    let resultText  = '--:--';
-    let subText     = "– pausa 30'";
-    let subColor    = 'var(--text3)';
+    let resultText = '--:--';
+    let subText = '– pausa 30\'';
+    let subColor = 'var(--text3)';
 
-    if(isHoliday){
-      resultClass = 'day-result festivo';
-      resultText  = 'FESTIVO';
-      subText     = weekHolidays[i];
-      subColor    = 'var(--accent)';
-    } else if(worked!==null){
-      resultClass = 'day-result '+(dayDiff>=0?'pos':'neg');
-      resultText  = minToHM(worked);
-      subText     = (dayDiff>=0?'+':'')+minToHM(dayDiff);
-      subColor    = dayDiff>=0?'var(--green)':'var(--accent)';
+    if (isOff) {
+      resultClass = 'day-result ' + (isFerieDay ? 'ferie' : 'festivo');
+      resultText = isFerieDay ? 'FERIE' : 'FESTIVO';
+      subText = '';
+    } else if (x.worked !== null) {
+      resultClass = 'day-result ' + (dayDiff >= 0 ? 'pos' : 'neg');
+      resultText = minToHM(x.worked);
+      subText = (dayDiff >= 0 ? '+' : '−') + minToHM(dayDiff);
+      subColor = dayDiff >= 0 ? 'var(--green)' : 'var(--accent)';
+    }
+
+    let badge = '';
+    if (isOff) {
+      badge = isFerieDay
+        ? '<div class="ferie-label">🏖 Ferie</div>'
+        : '<div class="holiday-label">🗓 ' + x.info.label + '</div>';
     }
 
     const card = document.createElement('div');
     card.className = cardClass;
-    card.innerHTML = `
-      <div class="day-header">
-        <div>
-          <div class="day-name">${isToday&&!isHoliday?'● ':''} ${SHORT_IT[i]} · ${DAYS_IT[i]}</div>
-          <div class="day-date">${fmt(dayDate)}</div>
-          ${isHoliday ? `<div class="holiday-label">🗓 ${weekHolidays[i]}</div>` : ''}
-        </div>
-        <div style="text-align:right">
-          <div class="${resultClass}">${resultText}</div>
-          <div class="day-sub" style="color:${subColor}">${isHoliday?'':subText}</div>
-        </div>
-      </div>
-      ${!isHoliday ? `
-      <div class="day-inputs">
-        <div class="input-group">
-          <label>Entrata</label>
-          <input type="time" value="${day.entry||''}" data-day="${i}" data-field="entry">
-        </div>
-        <div class="input-group">
-          <label>Uscita</label>
-          <input type="time" value="${day.exit||''}" data-day="${i}" data-field="exit">
-        </div>
-      </div>` : ''}
-    `;
+    card.innerHTML =
+      '<div class="day-header">' +
+        '<div>' +
+          '<div class="day-name">' + (isToday && !isOff ? '● ' : '') + SHORT_IT[i] + ' · ' + DAYS_IT[i] + '</div>' +
+          '<div class="day-date">' + fmt(x.d) + '</div>' + badge +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<div class="' + resultClass + '">' + resultText + '</div>' +
+          '<div class="day-sub" style="color:' + subColor + '">' + subText + '</div>' +
+        '</div>' +
+      '</div>' +
+      (!isOff ?
+      '<div class="day-inputs">' +
+        '<div class="input-group"><label>Entrata</label>' +
+          '<input type="time" value="' + data[i].entry + '" data-day="' + i + '" data-field="entry"></div>' +
+        '<div class="input-group"><label>Uscita</label>' +
+          '<input type="time" value="' + data[i].exit + '" data-day="' + i + '" data-field="exit"></div>' +
+      '</div>' : '');
     list.appendChild(card);
   });
 
-  // eventi input
-  list.querySelectorAll('input[type=time]').forEach(inp=>{
-    inp.addEventListener('change', e=>{
-      const idx   = +e.target.dataset.day;
-      const field = e.target.dataset.field;
-      const d     = loadWeek(weekOffset);
-      d[idx][field] = e.target.value;
-      saveWeek(weekOffset, d);
+  list.querySelectorAll('input[type=time]').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const k = weekKeyOf(getMonday(weekOffset));
+      const d = loadWeekByKey(k);
+      d[+e.target.dataset.day][e.target.dataset.field] = e.target.value;
+      saveWeekByKey(k, d);
       render();
     });
   });
+
+  renderFerie();
 }
 
-// nav
-document.getElementById('btn-prev').addEventListener('click',()=>{ weekOffset--; render(); });
-document.getElementById('btn-next').addEventListener('click',()=>{ weekOffset++; render(); });
-document.getElementById('clear-btn').addEventListener('click',()=>{
-  if(confirm('Azzera tutti i dati della settimana corrente?')){
-    localStorage.removeItem(storageKey(weekOffset));
+function renderFerie() {
+  const box = document.getElementById('ferie-list');
+  box.innerHTML = '';
+  if (!FERIE.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ferie-empty';
+    empty.textContent = 'Nessun periodo di ferie inserito';
+    box.appendChild(empty);
+    return;
+  }
+  FERIE.forEach((r, idx) => {
+    const row = document.createElement('div');
+    row.className = 'ferie-row';
+
+    const go = document.createElement('button');
+    go.className = 'ferie-go';
+    go.textContent = r.from === r.to ? fmtFull(r.from) : fmtFull(r.from) + '  →  ' + fmtFull(r.to);
+    go.title = 'Vai alla settimana';
+    go.addEventListener('click', () => {
+      weekOffset = Math.min(0, Math.max(-156, offsetForKey(r.from)));
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    const del = document.createElement('button');
+    del.className = 'ferie-del';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', 'Rimuovi ferie');
+    del.addEventListener('click', () => {
+      FERIE.splice(idx, 1);
+      saveFerie(FERIE);
+      render();
+    });
+
+    row.appendChild(go);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+
+// ================= EVENTI =================
+document.getElementById('btn-prev').addEventListener('click', () => { weekOffset--; render(); });
+document.getElementById('btn-next').addEventListener('click', () => { weekOffset++; render(); });
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  if (confirm('Azzera tutti i dati della settimana visualizzata?')) {
+    try { localStorage.removeItem(weekKeyOf(getMonday(weekOffset))); } catch (e) {}
     render();
   }
 });
 
-// ---- export Excel ----
+document.getElementById('ferie-add-btn').addEventListener('click', () => {
+  const f = document.getElementById('ferie-from').value;
+  const t = document.getElementById('ferie-to').value || f;
+  if (!f) { alert('Scegli la data di inizio delle ferie.'); return; }
+  let from = f, to = t;
+  if (to < from) { const tmp = from; from = to; to = tmp; }
+  FERIE.push({ from: from, to: to });
+  FERIE.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  saveFerie(FERIE);
+  document.getElementById('ferie-from').value = '';
+  document.getElementById('ferie-to').value = '';
+  render();
+});
+
+// ================= EXPORT EXCEL =================
+function r2(n) { return Math.round(n * 100) / 100; }
+
 document.getElementById('export-btn').addEventListener('click', () => {
-  const rows = [];
-  const weekTotals = {}; // weekKey -> {worked, target, diff}
-
-  // raccoglie tutte le chiavi timbr- salvate
-  const keys = Object.keys(localStorage).filter(k => k.startsWith('timbr-')).sort();
-
-  if (keys.length === 0) {
-    alert('Nessun dato da esportare.');
+  if (typeof XLSX === 'undefined') {
+    alert('Libreria Excel non caricata: per l\'esportazione serve la connessione internet.');
     return;
   }
 
-  keys.forEach(key => {
-    const monStr = key.replace('timbr-', '');
-    const mon = new Date(monStr + 'T00:00:00');
-    const year = mon.getFullYear();
-    const sun = new Date(mon.getTime() + 4*86400000);
+  // settimane con almeno un giorno registrato
+  const keys = allWeekKeys().filter(k => weekStats(parseKey(k.slice(6)), loadWeekByKey(k)).daysCounted > 0);
+  if (!keys.length) { alert('Nessun dato da esportare.'); return; }
 
-    const hmap = {};
-    getHolidays(year).forEach(h => { hmap[dateKey(h.date)] = h.name; });
-    if (year !== sun.getFullYear()) {
-      getHolidays(sun.getFullYear()).forEach(h => { hmap[dateKey(h.date)] = h.name; });
-    }
+  let mon = parseKey(keys[0].slice(6));
+  const lastMon = parseKey(keys[keys.length - 1].slice(6));
 
-    let data;
-    try { data = JSON.parse(localStorage.getItem(key)); } catch(e) { data = null; }
-    if (!data) return;
+  const detail = [];
+  const summary = [];
+  let totWorked = 0, totBalance = 0, totDays = 0;
 
-    let weekWorked = 0;
-    let weekHolCount = 0;
+  while (mon <= lastMon) {
+    const data = loadWeekByKey(weekKeyOf(mon));
+    const st = weekStats(mon, data);
 
-    data.forEach((day, i) => {
-      const d = new Date(mon.getTime() + i*86400000);
-      const hol = holidayName(d, hmap);
-      const worked = hol ? null : calcDay(day.entry, day.exit);
+    if (st.daysCounted > 0 || st.off > 0) {
+      const wl = fmtFullDate(mon) + ' - ' + fmtFullDate(addDays(mon, 4));
 
-      if (hol) weekHolCount++;
-      if (worked !== null) weekWorked += worked;
-
-      rows.push({
-        'Settimana':   fmt(mon) + ' - ' + fmt(sun),
-        'Giorno':      DAYS_IT[i],
-        'Data':        d.toLocaleDateString('it-IT'),
-        'Festivo':     hol || '',
-        'Entrata':     hol ? '' : (day.entry || ''),
-        'Uscita':      hol ? '' : (day.exit || ''),
-        'Pausa (min)': hol ? '' : (worked !== null ? BREAK : ''),
-        'Ore lavorate': hol ? '' : (worked !== null ? (worked/60).toFixed(2) : ''),
-        'Ore lavorate (h:m)': hol ? '' : (worked !== null ? minToHM(worked) : ''),
+      st.days.forEach((x, i) => {
+        const has = x.worked !== null;
+        detail.push({
+          'Settimana': wl,
+          'Giorno': DAYS_IT[i],
+          'Data': fmtFullDate(x.d),
+          'Stato': x.info ? (x.info.type === 'ferie' ? 'Ferie' : 'Festivo: ' + x.info.label) : '',
+          'Entrata': x.info ? '' : data[i].entry,
+          'Uscita': x.info ? '' : data[i].exit,
+          'Pausa (min)': has ? BREAK : '',
+          'Ore lavorate (h:m)': has ? minToHM(x.worked) : '',
+          'Ore lavorate (dec)': has ? r2(x.worked / 60) : '',
+          'Saldo giorno (h:m)': has ? fmtSigned(x.worked - TARGET_DAY) : '',
+          'Saldo giorno (dec)': has ? r2((x.worked - TARGET_DAY) / 60) : ''
+        });
       });
-    });
 
-    const target = TARGET_WEEK - weekHolCount*TARGET_DAY;
-    weekTotals[fmt(mon)+' - '+fmt(sun)] = {
-      worked: weekWorked, target, diff: weekWorked - target
-    };
+      summary.push({
+        'Settimana': wl,
+        'Giorni registrati': st.daysCounted,
+        'Giorni festivi/ferie': st.off,
+        'Ore lavorate (h:m)': minToHM(st.worked),
+        'Ore lavorate (dec)': r2(st.worked / 60),
+        'Obiettivo settimana (h:m)': minToHM(st.target),
+        'Obiettivo settimana (dec)': r2(st.target / 60),
+        'Saldo (h:m)': fmtSigned(st.balance),
+        'Saldo (dec)': r2(st.balance / 60)
+      });
+
+      totWorked += st.worked;
+      totBalance += st.balance;
+      totDays += st.daysCounted;
+    }
+    mon = addDays(mon, 7);
+  }
+
+  summary.push({
+    'Settimana': 'TOTALE',
+    'Giorni registrati': totDays,
+    'Giorni festivi/ferie': '',
+    'Ore lavorate (h:m)': minToHM(totWorked),
+    'Ore lavorate (dec)': r2(totWorked / 60),
+    'Obiettivo settimana (h:m)': '',
+    'Obiettivo settimana (dec)': '',
+    'Saldo (h:m)': fmtSigned(totBalance),
+    'Saldo (dec)': r2(totBalance / 60)
   });
 
-  // foglio 1: dettaglio giorni
-  const wsDetail = XLSX.utils.json_to_sheet(rows);
-  wsDetail['!cols'] = [
-    {wch:18},{wch:10},{wch:11},{wch:16},{wch:9},{wch:9},{wch:11},{wch:13},{wch:18}
-  ];
-
-  // foglio 2: riepilogo settimanale
-  const summaryRows = Object.entries(weekTotals).map(([week, t]) => ({
-    'Settimana': week,
-    'Ore lavorate (h:m)': minToHM(t.worked, true),
-    'Obiettivo (h:m)': minToHM(t.target, true),
-    'Differenza (h:m)': (t.diff>=0?'+':'') + minToHM(t.diff, true),
-    'Ore lavorate (dec)': (t.worked/60).toFixed(2),
-    'Obiettivo (dec)': (t.target/60).toFixed(2),
-    'Differenza (dec)': ((t.diff)/60).toFixed(2),
-  }));
-  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
-  wsSummary['!cols'] = [{wch:18},{wch:18},{wch:16},{wch:16},{wch:16},{wch:14},{wch:16}];
+  const wsSummary = XLSX.utils.json_to_sheet(summary);
+  wsSummary['!cols'] = [{wch:25},{wch:16},{wch:19},{wch:18},{wch:18},{wch:24},{wch:24},{wch:13},{wch:12}];
+  const wsDetail = XLSX.utils.json_to_sheet(detail);
+  wsDetail['!cols'] = [{wch:25},{wch:11},{wch:12},{wch:36},{wch:9},{wch:9},{wch:12},{wch:18},{wch:18},{wch:18},{wch:18}];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Riepilogo settimanale');
   XLSX.utils.book_append_sheet(wb, wsDetail, 'Dettaglio giorni');
-
-  const today = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `timbrature_${today}.xlsx`);
+  XLSX.writeFile(wb, 'timbrature_' + dateKey(new Date()) + '.xlsx');
 });
 
-// PWA install
+// ================= PWA install =================
 let deferredPrompt;
-window.addEventListener('beforeinstallprompt', e=>{
+window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   deferredPrompt = e;
   document.getElementById('install-banner').style.display = 'block';
 });
-document.getElementById('install-banner').addEventListener('click', async ()=>{
-  if(!deferredPrompt) return;
+document.getElementById('install-banner').addEventListener('click', async () => {
+  if (!deferredPrompt) return;
   deferredPrompt.prompt();
-  const {outcome} = await deferredPrompt.userChoice;
-  if(outcome==='accepted') document.getElementById('install-banner').style.display='none';
+  const r = await deferredPrompt.userChoice;
+  if (r.outcome === 'accepted') document.getElementById('install-banner').style.display = 'none';
   deferredPrompt = null;
 });
 
+// ================= AVVIO =================
+migrateLegacyKeys();
+FERIE = loadFerie();
 render();
 </script>
 
 <!-- Service Worker inline -->
 <script>
-if('serviceWorker' in navigator){
+if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'timbr-v2';
-    self.addEventListener('install', e=>{
-      e.waitUntil(caches.open(CACHE).then(c=>c.add('/')));
+    const CACHE = 'timbr-v3';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.add('/')));
       self.skipWaiting();
     });
-    self.addEventListener('fetch', e=>{
-      e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
     });
   `;
-  const blob = new Blob([swCode],{type:'application/javascript'});
-  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
 }
 </script>
 
@@ -799,11 +1071,11 @@ const manifest = {
     sizes: '192x192', type: 'image/svg+xml'
   }]
 };
-const blob2 = new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
-const link = document.createElement('link');
-link.rel = 'manifest';
-link.href = URL.createObjectURL(blob2);
-document.head.appendChild(link);
+const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+const manifestLink = document.createElement('link');
+manifestLink.rel = 'manifest';
+manifestLink.href = URL.createObjectURL(manifestBlob);
+document.head.appendChild(manifestLink);
 </script>
 </body>
 </html>
