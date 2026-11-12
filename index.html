@@ -10,7 +10,6 @@
 <title>Timbrature</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
   --bg: #0f0f1a;
@@ -492,7 +491,7 @@ header {
     Le ore in più contano solo i giorni con entrata e uscita inserite<br>
     Dati salvati localmente sul dispositivo
   </div>
-  <button class="export-btn" id="export-btn">📊 Esporta tutto in Excel</button>
+  <button class="export-btn" id="export-btn">📊 Esporta in Excel (con spiegazioni)</button>
   <button class="clear-btn" id="clear-btn">✕ Azzera settimana visualizzata</button>
 </div>
 
@@ -962,89 +961,561 @@ document.getElementById('ferie-add-btn').addEventListener('click', () => {
 });
 
 // ================= EXPORT EXCEL =================
-function r2(n) { return Math.round(n * 100) / 100; }
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const EX = {
+  dark: 'FF1A1A2E', head: 'FF2B3A67', white: 'FFFFFFFF',
+  green: 'FFE3F6EE', red: 'FFFDE8EC', blue: 'FFE6F1FC', orange: 'FFFFF0DC', grey: 'FFF0F0F3',
+  line: 'FFD9D9E3'
+};
+const FMT_DUR = '[h]:mm';
+const FMT_MIN = '+0" min";-0" min";0" min"';
+const SH_R = 'Risultato', SH_C = 'Come si calcola', SH_D = 'Dettaglio giorni',
+      SH_W = 'Riepilogo settimane', SH_F = 'Ferie e festivi';
 
-document.getElementById('export-btn').addEventListener('click', () => {
-  if (typeof XLSX === 'undefined') {
-    alert('Libreria Excel non caricata: per l\'esportazione serve la connessione internet.');
-    return;
-  }
+function excelSerial(d) {
+  return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000);
+}
+// formula Excel che scrive i minuti con segno come "+0h 54m" / "−1h 06m"
+function signedFormula(ref) {
+  return 'IF(' + ref + '>=0,"+","−")&INT(ABS(' + ref + ')/60)&"h "&TEXT(MOD(ABS(' + ref + '),60),"00")&"m"';
+}
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+function rowHeight(text, charsPerLine) {
+  return Math.max(20, 15 * Math.ceil(String(text).length / charsPerLine) + 5);
+}
 
-  // settimane con almeno un giorno registrato
+// ---- raccolta dati: tutti i giorni lun-ven dalla prima all'ultima settimana con dati ----
+function buildExportModel() {
   const keys = allWeekKeys().filter(k => weekStats(parseKey(k.slice(6)), loadWeekByKey(k)).daysCounted > 0);
-  if (!keys.length) { alert('Nessun dato da esportare.'); return; }
-
-  let mon = parseKey(keys[0].slice(6));
+  if (!keys.length) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const firstMon = parseKey(keys[0].slice(6));
   const lastMon = parseKey(keys[keys.length - 1].slice(6));
-
-  const detail = [];
-  const summary = [];
-  let totWorked = 0, totBalance = 0, totDays = 0;
-
+  const days = [], weeks = [];
+  let mon = firstMon, n = 0;
   while (mon <= lastMon) {
     const data = loadWeekByKey(weekKeyOf(mon));
     const st = weekStats(mon, data);
-
-    if (st.daysCounted > 0 || st.off > 0) {
-      const wl = fmtFullDate(mon) + ' - ' + fmtFullDate(addDays(mon, 4));
-
-      st.days.forEach((x, i) => {
-        const has = x.worked !== null;
-        detail.push({
-          'Settimana': wl,
-          'Giorno': DAYS_IT[i],
-          'Data': fmtFullDate(x.d),
-          'Stato': x.info ? (x.info.type === 'ferie' ? 'Ferie' : 'Festivo: ' + x.info.label) : '',
-          'Entrata': x.info ? '' : data[i].entry,
-          'Uscita': x.info ? '' : data[i].exit,
-          'Pausa (min)': has ? BREAK : '',
-          'Ore lavorate (h:m)': has ? minToHM(x.worked) : '',
-          'Ore lavorate (dec)': has ? r2(x.worked / 60) : '',
-          'In più/meno giorno (h:m)': has ? fmtSigned(x.worked - TARGET_DAY) : '',
-          'In più/meno giorno (dec)': has ? r2((x.worked - TARGET_DAY) / 60) : ''
-        });
-      });
-
-      summary.push({
-        'Settimana': wl,
-        'Giorni registrati': st.daysCounted,
-        'Giorni festivi/ferie': st.off,
-        'Ore lavorate (h:m)': minToHM(st.worked),
-        'Ore lavorate (dec)': r2(st.worked / 60),
-        'Obiettivo settimana (h:m)': minToHM(st.target),
-        'Obiettivo settimana (dec)': r2(st.target / 60),
-        'Ore in più/meno (h:m)': fmtSigned(st.balance),
-        'Ore in più/meno (dec)': r2(st.balance / 60)
-      });
-
-      totWorked += st.worked;
-      totBalance += st.balance;
-      totDays += st.daysCounted;
-    }
+    const iso = isoWeek(mon);
+    const label = 'W' + pad(iso.w) + '/' + iso.y;
+    const wk = { mon: mon, fri: addDays(mon, 4), label: label, festivi: 0, ferie: 0, valid: 0, worked: 0 };
+    st.days.forEach((x, i) => {
+      const raw = data[i];
+      const e = t2m(raw.entry), u = t2m(raw.exit);
+      let status;
+      if (x.info) status = 'off';
+      else if (!raw.entry && !raw.exit) status = 'vuoto';
+      else if (!raw.entry || !raw.exit) status = 'incompleto';
+      else if (u <= e) status = 'nonvalido';
+      else status = 'ok';
+      if (x.info && x.info.type === 'festivo') wk.festivi++;
+      if (x.info && x.info.type === 'ferie') wk.ferie++;
+      if (status === 'ok') { wk.valid++; wk.worked += x.worked; }
+      days.push({ n: ++n, label: label, d: x.d, dayName: DAYS_IT[i], info: x.info, raw: raw,
+                  e: e, u: u, status: status, worked: x.worked, future: x.d > today });
+    });
+    weeks.push(wk);
     mon = addDays(mon, 7);
   }
+  const counted = days.filter(x => x.status === 'ok');
+  return { days: days, weeks: weeks, counted: counted,
+           first: counted[0].d, last: counted[counted.length - 1].d };
+}
 
-  summary.push({
-    'Settimana': 'TOTALE',
-    'Giorni registrati': totDays,
-    'Giorni festivi/ferie': '',
-    'Ore lavorate (h:m)': minToHM(totWorked),
-    'Ore lavorate (dec)': r2(totWorked / 60),
-    'Obiettivo settimana (h:m)': '',
-    'Obiettivo settimana (dec)': '',
-    'Ore in più/meno (h:m)': fmtSigned(totBalance),
-    'Ore in più/meno (dec)': r2(totBalance / 60)
+// ---- frasi di spiegazione ----
+function explainDay(x) {
+  const due = minToHM(TARGET_DAY);
+  if (x.status === 'off') {
+    const tipo = x.info.type === 'ferie' ? 'FERIE: giorno di ferie' : 'FESTIVO (' + x.info.label + '): giorno festivo';
+    return tipo + ', non si lavora. Non ci sono ore dovute, quindi non crea né ore in più né ore in meno. '
+      + 'Il target della settimana scende di ' + due + '. NON conta nel saldo.';
+  }
+  if (x.status === 'ok') {
+    const pres = x.u - x.e;
+    const diff = x.worked - TARGET_DAY;
+    let s = 'Entrata ' + x.raw.entry + ', uscita ' + x.raw.exit + ' → in sede ' + minToHM(pres) + '. '
+      + 'Tolta la pausa di ' + BREAK + ' min → ore lavorate ' + minToHM(x.worked)
+      + (pres < BREAK ? ' (la presenza è più corta della pausa: le ore lavorate non possono scendere sotto zero)' : '')
+      + '. Ore dovute ' + due + '. ';
+    if (diff > 0) s += 'Differenza ' + fmtSigned(diff) + ': ' + minToHM(diff) + ' IN PIÙ.';
+    else if (diff < 0) s += 'Differenza ' + fmtSigned(diff) + ': mancano ' + minToHM(diff) + ' (IN MENO, da recuperare).';
+    else s += 'Esattamente le ore dovute: differenza zero.';
+    return s + ' Conta nel saldo.';
+  }
+  if (x.status === 'vuoto') {
+    return x.future
+      ? 'Giorno non ancora arrivato: nessun orario da inserire. NON conta nel saldo.'
+      : 'Giorno lavorativo senza orari inseriti: l\'app non può calcolare nulla, quindi NON conta nel saldo '
+        + '(non crea né ore in più né ore da recuperare). Se hai lavorato, inserisci entrata e uscita nell\'app.';
+  }
+  if (x.status === 'incompleto') {
+    return 'Manca l\'orario di ' + (x.raw.entry ? 'uscita' : 'entrata') + ': servono entrambi per calcolare. NON conta nel saldo.';
+  }
+  return 'L\'uscita (' + x.raw.exit + ') non è successiva all\'entrata (' + x.raw.entry + '): orario non valido. NON conta nel saldo.';
+}
+
+function explainWeek(w, due) {
+  const lav = 5 - w.festivi - w.ferie;
+  const diff = w.worked - w.valid * TARGET_DAY;
+  let s = 'Dal ' + fmt(w.mon) + ' al ' + fmt(w.fri) + ': ' + plural(lav, 'giorno', 'giorni') + ' di lavoro da fare'
+    + ' (' + plural(w.festivi, 'festivo', 'festivi') + ', ' + plural(w.ferie, 'giorno di ferie', 'giorni di ferie') + '). '
+    + 'Orari validi in ' + plural(w.valid, 'giorno', 'giorni') + '. '
+    + 'Ore lavorate ' + minToHM(w.worked) + ', ore dovute per quei giorni ' + minToHM(w.valid * TARGET_DAY)
+    + ' → differenza ' + fmtSigned(diff) + '.';
+  if (w.valid < lav) s += ' Settimana incompleta: i giorni senza orari non sono contati.';
+  return s;
+}
+
+// ---- costruzione del file ----
+function buildExportWorkbook(EJ) {
+  const M = buildExportModel();
+  if (!M) return null;
+  const days = M.days, weeks = M.weeks, counted = M.counted;
+  const nD = days.length, lastD = 4 + nD;
+  const DUE = TARGET_DAY; // minuti
+  const DUE_TXT = minToHM(DUE);
+
+  const wb = new EJ.Workbook();
+  wb.creator = 'Timbrature';
+  wb.created = new Date();
+  const wsR = wb.addWorksheet(SH_R, { properties: { tabColor: { argb: 'FF00B894' } } });
+  const wsC = wb.addWorksheet(SH_C, { properties: { tabColor: { argb: 'FF4DA3FF' } } });
+  const wsD = wb.addWorksheet(SH_D, { properties: { tabColor: { argb: 'FFE94560' } },
+                                       views: [{ state: 'frozen', xSplit: 4, ySplit: 4 }] });
+  const wsW = wb.addWorksheet(SH_W, { properties: { tabColor: { argb: 'FFFFA500' } },
+                                       views: [{ state: 'frozen', xSplit: 2, ySplit: 4 }] });
+  const wsF = wb.addWorksheet(SH_F, { properties: { tabColor: { argb: 'FF8888AA' } } });
+
+  const q = s => "'" + s + "'!";
+  const D = col => q(SH_D) + '$' + col + '$5:$' + col + '$' + lastD;
+
+  const solid = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: argb } });
+  const thin = { style: 'thin', color: { argb: EX.line } };
+  function title(ws, addr, text, span) {
+    ws.mergeCells(addr + ':' + span);
+    const c = ws.getCell(addr);
+    c.value = text;
+    c.font = { bold: true, size: 15, color: { argb: EX.dark } };
+    c.alignment = { vertical: 'middle' };
+    ws.getRow(+addr.slice(1)).height = 28;
+  }
+  function note(ws, addr, text, span, chars) {
+    ws.mergeCells(addr + ':' + span);
+    const c = ws.getCell(addr);
+    c.value = text;
+    c.alignment = { wrapText: true, vertical: 'top' };
+    c.font = { color: { argb: 'FF444455' } };
+    ws.getRow(+addr.slice(1)).height = rowHeight(text, chars);
+  }
+  function headRow(ws, r, labels) {
+    labels.forEach((t, i) => {
+      const c = ws.getCell(r, i + 1);
+      c.value = t;
+      c.font = { bold: true, color: { argb: EX.white } };
+      c.fill = solid(EX.dark);
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      c.border = { top: thin, bottom: thin, left: thin, right: thin };
+    });
+    ws.getRow(r).height = 66;
+  }
+
+  // =================== COME SI CALCOLA ===================
+  wsC.columns = [{ width: 42 }, { width: 16 }, { width: 100 }];
+  title(wsC, 'A1', 'COME SI CALCOLANO LE ORE — spiegazione per tutti', 'C1');
+  note(wsC, 'A2',
+    'Questo file è stato creato dall\'app Timbrature. Ogni numero è ottenuto con una formula Excel visibile: clicca su una cella per vedere come è stata calcolata. '
+    + 'Le frasi della colonna «Spiegazione» raccontano il calcolo con i valori usati al momento dell\'esportazione.', 'C2', 150);
+
+  function sec(r, text) {
+    wsC.mergeCells('A' + r + ':C' + r);
+    const c = wsC.getCell('A' + r);
+    c.value = text;
+    c.font = { bold: true, color: { argb: EX.white } };
+    c.fill = solid(EX.head);
+    c.alignment = { vertical: 'middle' };
+    wsC.getRow(r).height = 22;
+  }
+  sec(4, '1. PARAMETRI USATI NEL CALCOLO');
+  const params = [
+    [5, 'Ore settimanali da contratto', 38 / 24, FMT_DUR, 'Le ore da fare ogni settimana: 38 ore.'],
+    [6, 'Giorni lavorativi a settimana', 5, '0', 'Da lunedì a venerdì.'],
+    [8, 'Pausa pranzo (minuti)', BREAK, '0', 'Viene sempre tolta dalle ore in sede, ogni giorno lavorato.']
+  ];
+  params.forEach(p => {
+    const r = p[0];
+    wsC.getCell('A' + r).value = p[1];
+    wsC.getCell('A' + r).font = { bold: true };
+    const b = wsC.getCell('B' + r);
+    b.value = p[2]; b.numFmt = p[3];
+    b.alignment = { horizontal: 'center' };
+    b.fill = solid('FFFFF8DC');
+    b.border = { top: thin, bottom: thin, left: thin, right: thin };
+    wsC.getCell('C' + r).value = p[4];
+  });
+  wsC.getCell('A7').value = 'Ore dovute ogni giorno';
+  wsC.getCell('A7').font = { bold: true };
+  const b7 = wsC.getCell('B7');
+  b7.value = { formula: 'B5/B6', result: DUE / 1440 };
+  b7.numFmt = FMT_DUR;
+  b7.alignment = { horizontal: 'center' };
+  b7.border = { top: thin, bottom: thin, left: thin, right: thin };
+  wsC.getCell('C7').value = '38 ore ÷ 5 giorni = ' + DUE_TXT + ' al giorno (non 8 ore!). Si calcola da solo.';
+  note(wsC, 'A9',
+    'Puoi cambiare le celle gialle (B5, B6, B8): tutti i calcoli del file si aggiornano da soli. Le frasi della colonna «Spiegazione» invece restano com\'erano, perché sono testo.',
+    'C9', 150);
+  wb.definedNames.add("'" + SH_C + "'!$B$5", 'ORE_SETTIMANA');
+  wb.definedNames.add("'" + SH_C + "'!$B$6", 'GIORNI_SETT');
+  wb.definedNames.add("'" + SH_C + "'!$B$7", 'ORE_GIORNO');
+  wb.definedNames.add("'" + SH_C + "'!$B$8", 'PAUSA_MIN');
+
+  let rr = 11;
+  const para = t => {
+    wsC.mergeCells('A' + rr + ':C' + rr);
+    const c = wsC.getCell('A' + rr);
+    c.value = t;
+    c.alignment = { wrapText: true, vertical: 'top' };
+    wsC.getRow(rr).height = rowHeight(t, 135);
+    rr++;
+  };
+  const gloss = (name, t) => {
+    const a = wsC.getCell('A' + rr);
+    a.value = name; a.font = { bold: true }; a.alignment = { vertical: 'top', wrapText: true };
+    wsC.mergeCells('B' + rr + ':C' + rr);
+    const c = wsC.getCell('B' + rr);
+    c.value = t; c.alignment = { wrapText: true, vertical: 'top' };
+    wsC.getRow(rr).height = rowHeight(t, 105);
+    rr++;
+  };
+  const gap = () => { rr++; };
+
+  sec(rr++, '2. LE REGOLE, UNA PER UNA');
+  para('1) Si lavorano 38 ore a settimana su 5 giorni (lunedì–venerdì): 38 ÷ 5 = ' + DUE_TXT + ' di lavoro dovuto ogni giorno.');
+  para('2) Ogni giorno si inseriscono l\'orario di entrata e quello di uscita. Le ore in sede sono: uscita − entrata.');
+  para('3) Dalle ore in sede si toglie sempre la pausa pranzo di ' + BREAK + ' minuti. Ore lavorate = ore in sede − pausa.');
+  para('4) La differenza del giorno è: ore lavorate − ' + DUE_TXT + '. Se è positiva sono ore IN PIÙ; se è negativa sono ore IN MENO (da recuperare).');
+  para('5) Il risultato finale «ore in più dall\'inizio alla fine» è la SOMMA delle differenze di TUTTI i giorni registrati, dal primo all\'ultimo. I giorni in più compensano quelli in meno.');
+  para('6) Ferie e festivi sono giorni non lavorativi: non hanno ore dovute, quindi non creano né ore in più né ore in meno. Nel riepilogo settimanale il target di 38 ore scende di ' + DUE_TXT + ' per ogni giorno di ferie o festivo.');
+  para('7) Festivi considerati: Capodanno, Epifania, Pasqua, Pasquetta, 25 aprile, 1 maggio, 2 giugno, Ferragosto, Ognissanti, Immacolata Concezione, Natale, Santo Stefano'
+    + (LOCAL_HOLIDAYS.length ? ', ' + LOCAL_HOLIDAYS.map(h => h[0] + '/' + h[1] + ' (' + h[2] + ')').join(', ') : '') + '.');
+  para('8) NON contano nel saldo: i giorni senza entrata e uscita complete, i giorni con uscita non successiva all\'entrata, le ferie e i festivi. Sabato e domenica non sono gestiti dall\'app.');
+  gap();
+
+  sec(rr++, '3. UN ESEMPIO PASSO PASSO');
+  para('Lunedì: entrata 08:00, uscita 17:00.');
+  para('   • Ore in sede: 17:00 − 08:00 = 9h 00m');
+  para('   • Tolgo la pausa: 9h 00m − 30 min = 8h 30m  (queste sono le ore lavorate)');
+  para('   • Ore dovute: 7h 36m');
+  para('   • Differenza: 8h 30m − 7h 36m = +54 minuti  → 54 minuti IN PIÙ');
+  para('Martedì: entrata 09:00, uscita 16:00 → 7h 00m − 30 min = 6h 30m → 6h 30m − 7h 36m = −66 minuti  → 66 minuti IN MENO');
+  para('Totale dei due giorni: +54 − 66 = −12 minuti  → in totale 12 minuti IN MENO.');
+  gap();
+
+  sec(rr++, '4. SIGNIFICATO DELLE COLONNE — foglio «' + SH_D + '» (una riga per ogni giorno lunedì–venerdì)');
+  gloss('N.', 'Numero progressivo della riga.');
+  gloss('Settimana', 'Numero della settimana dell\'anno (standard ISO) e anno, es. W46/2026.');
+  gloss('Giorno / Data', 'Il giorno della settimana e la data.');
+  gloss('Tipo di giorno', 'Lavorativo, Ferie oppure Festivo (con il nome della festa).');
+  gloss('Entrata / Uscita', 'Gli orari che hai inserito nell\'app. Restano vuoti per ferie e festivi.');
+  gloss('Presenza in sede', 'Uscita − Entrata. È il tempo trascorso al lavoro, pausa compresa.');
+  gloss('Pausa tolta (min)', 'La pausa pranzo detratta, presa dal parametro «Pausa pranzo» (30 minuti).');
+  gloss('Ore lavorate nette', 'Presenza in sede − pausa. Sono le ore realmente lavorate.');
+  gloss('Ore dovute del giorno', 'Le ore che avresti dovuto fare quel giorno: ' + DUE_TXT + ' (38 ore ÷ 5).');
+  gloss('Differenza (minuti)', '(Ore lavorate nette − Ore dovute) espressa in minuti. Positivo = ore in più, negativo = ore in meno.');
+  gloss('Differenza (ore e minuti)', 'La stessa differenza scritta in modo leggibile, es. +0h 54m oppure −1h 06m.');
+  gloss('Conta nel saldo?', 'SÌ solo se entrata e uscita sono presenti e l\'uscita è dopo l\'entrata. Altrimenti NO e la riga non entra nei totali.');
+  gloss('Spiegazione del calcolo', 'Una frase che racconta il calcolo di quella riga con i numeri veri.');
+  gap();
+  sec(rr++, '5. SIGNIFICATO DELLE COLONNE — foglio «' + SH_W + '» (una riga per ogni settimana)');
+  gloss('Giorni festivi / Giorni ferie', 'Quanti giorni lun–ven della settimana sono festivi o di ferie.');
+  gloss('Giorni da lavorare', '5 − festivi − ferie.');
+  gloss('Giorni con orari validi', 'Quanti giorni hanno entrata e uscita corrette (quelli che entrano nel calcolo).');
+  gloss('Obiettivo settimana', 'Giorni da lavorare × ' + DUE_TXT + '. Con 5 giorni da lavorare sono 38h 00m; ogni festivo o ferie toglie ' + DUE_TXT + '.');
+  gloss('Ore lavorate', 'Somma delle ore lavorate nette dei giorni con orari validi.');
+  gloss('Ore dovute (giorni registrati)', 'Giorni con orari validi × ' + DUE_TXT + '. È il confronto corretto per le ore lavorate della colonna precedente.');
+  gloss('Ore in più/meno', 'Somma delle differenze dei giorni della settimana, in minuti e in ore e minuti.');
+  gloss('Settimana completa?', 'SÌ se ogni giorno da lavorare ha gli orari inseriti; altrimenti indica quanti giorni mancano.');
+  gap();
+  sec(rr++, '6. COSA SIGNIFICA OGNI RIGA DEL FOGLIO «' + SH_R + '»');
+  gloss('Ore in più / in meno', 'Il risultato finale: somma delle differenze di tutti i giorni validi, dal primo all\'ultimo. È lo stesso numero in testo, in minuti e in ore decimali.');
+  gloss('Come si arriva al numero', 'Giorni validi, ore lavorate in quei giorni, ore dovute in quei giorni e la loro differenza. In fondo una riga di controllo dice se i totali coincidono.');
+  gloss('Giorni sopra / sotto', 'Quanti giorni hai superato le 7h 36m e di quanto in totale, e quanti giorni sei rimasto sotto e di quanto in totale. La differenza tra i due totali è il risultato finale.');
+  gloss('Giorni non contati', 'Ferie, festivi e giorni lavorativi senza orari validi. Una riga di controllo verifica che la somma di tutti i giorni torni.');
+  gap();
+  sec(rr++, '7. LIMITI DA CONOSCERE');
+  para('• I dati vengono letti dal browser in cui usi l\'app: gli orari inseriti su un altro telefono o computer non compaiono.');
+  para('• La pausa è fissa a 30 minuti. Se un giorno non la fai o la fai diversa, le ore lavorate risultano diverse dal reale: correggi l\'orario di uscita.');
+  para('• I giorni senza orari non creano debito: se hai fatto un permesso o una malattia, l\'app non li conosce e non li conta.');
+  para('• Il file riporta solo i giorni dalla prima all\'ultima settimana in cui hai inserito degli orari.');
+
+  // =================== DETTAGLIO GIORNI ===================
+  wsD.columns = [{ width: 6 }, { width: 11 }, { width: 12 }, { width: 12 }, { width: 28 }, { width: 9 }, { width: 9 },
+                 { width: 14 }, { width: 11 }, { width: 15 }, { width: 13 }, { width: 14 }, { width: 15 }, { width: 11 }, { width: 100 }];
+  title(wsD, 'A1', 'DETTAGLIO GIORNO PER GIORNO', 'O1');
+  note(wsD, 'A2', 'Ogni riga è un giorno lavorativo (lunedì–venerdì). Leggi la colonna «Spiegazione del calcolo» per capire come si arriva al numero. Le colonne H–M sono formule: clicca su una cella per vederle.', 'O2', 200);
+  note(wsD, 'A3', 'Colori:  verde = ore in più  ·  rosso = ore in meno  ·  blu = ferie  ·  arancione = festivo  ·  grigio = non conta nel saldo (orari mancanti o non validi).', 'O3', 200);
+  headRow(wsD, 4, ['N.', 'Settimana', 'Giorno', 'Data', 'Tipo di giorno', 'Entrata', 'Uscita',
+                   'Presenza in sede (uscita − entrata)', 'Pausa tolta (min)', 'Ore lavorate nette (presenza − pausa)',
+                   'Ore dovute del giorno', 'Differenza (minuti)', 'Differenza (ore e minuti)', 'Conta nel saldo?',
+                   'Spiegazione del calcolo']);
+
+  days.forEach((x, i) => {
+    const r = 5 + i;
+    const ok = x.status === 'ok', off = x.status === 'off';
+    const diff = ok ? x.worked - DUE : null;
+    const V = '$N' + r + '="SÌ"';
+    const set = (col, value, f) => { const c = wsD.getCell(col + r); c.value = value; if (f) c.numFmt = f; return c; };
+    set('A', x.n); set('B', x.label); set('C', x.dayName);
+    set('D', excelSerial(x.d), 'dd/mm/yyyy');
+    set('E', off ? (x.info.type === 'ferie' ? 'Ferie' : 'Festivo – ' + x.info.label) : 'Lavorativo');
+    if (!off && x.raw.entry) set('F', x.e / 1440, 'hh:mm');
+    if (!off && x.raw.exit) set('G', x.u / 1440, 'hh:mm');
+    set('H', { formula: 'IF(' + V + ',G' + r + '-F' + r + ',"")', result: ok ? (x.u - x.e) / 1440 : '' }, FMT_DUR);
+    set('I', { formula: 'IF(' + V + ',PAUSA_MIN,"")', result: ok ? BREAK : '' }, '0');
+    set('J', { formula: 'IF(' + V + ',MAX(0,H' + r + '-I' + r + '/1440),"")', result: ok ? x.worked / 1440 : '' }, FMT_DUR);
+    set('K', { formula: 'IF(' + V + ',ORE_GIORNO,"")', result: ok ? DUE / 1440 : '' }, FMT_DUR);
+    set('L', { formula: 'IF(' + V + ',ROUND((J' + r + '-K' + r + ')*1440,0),"")', result: ok ? diff : '' }, FMT_MIN);
+    set('M', { formula: 'IF(' + V + ',' + signedFormula('L' + r) + ',"")', result: ok ? fmtSigned(diff) : '' });
+    set('N', { formula: 'IF(AND(ISNUMBER(F' + r + '),ISNUMBER(G' + r + '),G' + r + '>F' + r + '),"SÌ","NO")', result: ok ? 'SÌ' : 'NO' });
+    set('O', explainDay(x));
+
+    let bg = null;
+    if (off) bg = x.info.type === 'ferie' ? EX.blue : EX.orange;
+    else if (!ok) bg = EX.grey;
+    else if (diff > 0) bg = EX.green;
+    else if (diff < 0) bg = EX.red;
+    const firstOfWeek = i % 5 === 0;
+    for (let c = 1; c <= 15; c++) {
+      const cell = wsD.getCell(r, c);
+      if (bg) cell.fill = solid(bg);
+      cell.alignment = c === 15 ? { wrapText: true, vertical: 'middle' } : { horizontal: 'center', vertical: 'middle' };
+      cell.border = { top: firstOfWeek ? { style: 'medium', color: { argb: 'FF8888AA' } } : thin, bottom: thin, left: thin, right: thin };
+    }
+    wsD.getCell('E' + r).alignment = { horizontal: 'left', vertical: 'middle' };
+    wsD.getRow(r).height = rowHeight(explainDay(x), 105);
+  });
+  wsD.autoFilter = 'A4:O' + lastD;
+  wsD.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  // =================== RIEPILOGO SETTIMANE ===================
+  const nW = weeks.length, lastW = 4 + nW, totW = lastW + 1;
+  wsW.columns = [{ width: 6 }, { width: 11 }, { width: 12 }, { width: 12 }, { width: 10 }, { width: 10 }, { width: 12 },
+                 { width: 13 }, { width: 13 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 14 }, { width: 24 }, { width: 100 }];
+  title(wsW, 'A1', 'RIEPILOGO SETTIMANA PER SETTIMANA', 'O1');
+  note(wsW, 'A2', 'Ogni riga è una settimana. I numeri sono formule che sommano le righe del foglio «' + SH_D + '». L\'ultima riga è il totale dall\'inizio alla fine.', 'O2', 200);
+  note(wsW, 'A3', 'Nota: «Obiettivo settimana» è quello che dovresti fare nella settimana (38h meno ' + DUE_TXT + ' per ogni festivo o ferie). «Ore dovute (giorni registrati)» considera solo i giorni con orari validi, ed è il confronto usato per le ore in più/meno.', 'O3', 200);
+  headRow(wsW, 4, ['N.', 'Settimana', 'Dal (lunedì)', 'Al (venerdì)', 'Giorni festivi', 'Giorni ferie', 'Giorni da lavorare',
+                   'Giorni con orari validi', 'Obiettivo settimana', 'Ore lavorate', 'Ore dovute (giorni registrati)',
+                   'Ore in più/meno (minuti)', 'Ore in più/meno (ore e minuti)', 'Settimana completa?', 'Spiegazione del calcolo']);
+  const inWeek = r => D('D') + ',">="&$C' + r + ',' + D('D') + ',"<="&$D' + r;
+  let tFest = 0, tFerie = 0, tLav = 0, tValid = 0, tObj = 0, tWork = 0, tDue = 0;
+  weeks.forEach((w, i) => {
+    const r = 5 + i;
+    const lav = 5 - w.festivi - w.ferie;
+    const due = w.valid * DUE;
+    const diff = w.worked - due;
+    tFest += w.festivi; tFerie += w.ferie; tLav += lav; tValid += w.valid; tObj += lav * DUE; tWork += w.worked; tDue += due;
+    const set = (col, value, f) => { const c = wsW.getCell(col + r); c.value = value; if (f) c.numFmt = f; return c; };
+    set('A', i + 1); set('B', w.label);
+    set('C', excelSerial(w.mon), 'dd/mm/yyyy'); set('D', excelSerial(w.fri), 'dd/mm/yyyy');
+    set('E', { formula: 'COUNTIFS(' + inWeek(r) + ',' + D('E') + ',"Festivo*")', result: w.festivi });
+    set('F', { formula: 'COUNTIFS(' + inWeek(r) + ',' + D('E') + ',"Ferie")', result: w.ferie });
+    set('G', { formula: 'GIORNI_SETT-E' + r + '-F' + r, result: lav });
+    set('H', { formula: 'COUNTIFS(' + inWeek(r) + ',' + D('N') + ',"SÌ")', result: w.valid });
+    set('I', { formula: 'G' + r + '*ORE_GIORNO', result: lav * DUE / 1440 }, FMT_DUR);
+    set('J', { formula: 'SUMIFS(' + D('J') + ',' + inWeek(r) + ')', result: w.worked / 1440 }, FMT_DUR);
+    set('K', { formula: 'H' + r + '*ORE_GIORNO', result: due / 1440 }, FMT_DUR);
+    set('L', { formula: 'SUMIFS(' + D('L') + ',' + inWeek(r) + ')', result: diff }, FMT_MIN);
+    set('M', { formula: signedFormula('L' + r), result: fmtSigned(diff) });
+    const miss = lav - w.valid;
+    set('N', { formula: 'IF(H' + r + '=G' + r + ',"SÌ","NO – "&(G' + r + '-H' + r + ')&IF(G' + r + '-H' + r + '=1," giorno"," giorni")&" senza orari")',
+               result: miss === 0 ? 'SÌ' : 'NO – ' + miss + (miss === 1 ? ' giorno' : ' giorni') + ' senza orari' });
+    set('O', explainWeek(w));
+    const bg = w.valid === 0 ? EX.grey : diff > 0 ? EX.green : diff < 0 ? EX.red : null;
+    for (let c = 1; c <= 15; c++) {
+      const cell = wsW.getCell(r, c);
+      if (bg) cell.fill = solid(bg);
+      cell.alignment = c === 15 ? { wrapText: true, vertical: 'middle' } : { horizontal: 'center', vertical: 'middle', wrapText: c === 14 };
+      cell.border = { top: thin, bottom: thin, left: thin, right: thin };
+    }
+    wsW.getRow(r).height = rowHeight(explainWeek(w), 105);
+  });
+  const totDiff = tWork - tDue;
+  const setT = (col, value, f) => { const c = wsW.getCell(col + totW); c.value = value; if (f) c.numFmt = f; return c; };
+  setT('A', ''); setT('B', 'TOTALE');
+  setT('E', { formula: 'SUM(E5:E' + lastW + ')', result: tFest });
+  setT('F', { formula: 'SUM(F5:F' + lastW + ')', result: tFerie });
+  setT('G', { formula: 'SUM(G5:G' + lastW + ')', result: tLav });
+  setT('H', { formula: 'SUM(H5:H' + lastW + ')', result: tValid });
+  setT('I', { formula: 'SUM(I5:I' + lastW + ')', result: tObj / 1440 }, FMT_DUR);
+  setT('J', { formula: 'SUM(J5:J' + lastW + ')', result: tWork / 1440 }, FMT_DUR);
+  setT('K', { formula: 'SUM(K5:K' + lastW + ')', result: tDue / 1440 }, FMT_DUR);
+  setT('L', { formula: 'SUM(L5:L' + lastW + ')', result: totDiff }, FMT_MIN);
+  setT('M', { formula: signedFormula('L' + totW), result: fmtSigned(totDiff) });
+  setT('O', 'Totale di tutte le settimane. La colonna «Ore in più/meno» di questa riga è il risultato finale dall\'inizio alla fine.');
+  for (let c = 1; c <= 15; c++) {
+    const cell = wsW.getCell(totW, c);
+    cell.font = { bold: true };
+    cell.fill = solid('FFD8E4F7');
+    cell.alignment = c === 15 ? { wrapText: true, vertical: 'middle' } : { horizontal: 'center', vertical: 'middle' };
+    cell.border = { top: { style: 'medium', color: { argb: EX.dark } }, bottom: thin, left: thin, right: thin };
+  }
+  wsW.getRow(totW).height = 32;
+  wsW.autoFilter = 'A4:O' + lastW;
+  wsW.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  // =================== FERIE E FESTIVI ===================
+  wsF.columns = [{ width: 13 }, { width: 13 }, { width: 14 }, { width: 40 }, { width: 100 }];
+  title(wsF, 'A1', 'FERIE E FESTIVI NEL PERIODO', 'E1');
+  note(wsF, 'A2', 'Giorni lunedì–venerdì che non vengono lavorati. Per ognuno le ore dovute sono 0: non creano né ore in più né ore in meno.', 'E2', 190);
+  headRow(wsF, 4, ['Data', 'Giorno', 'Tipo', 'Motivo', 'Effetto sul calcolo']);
+  const offDays = days.filter(x => x.status === 'off');
+  if (!offDays.length) {
+    wsF.getCell('A5').value = 'Nessun giorno di ferie o festivo nel periodo.';
+  }
+  offDays.forEach((x, i) => {
+    const r = 5 + i;
+    const ferie = x.info.type === 'ferie';
+    const vals = [excelSerial(x.d), x.dayName, ferie ? 'Ferie' : 'Festivo', ferie ? 'Periodo di ferie inserito nell\'app' : x.info.label,
+      'Ore dovute del giorno: 0. Il target della settimana scende di ' + DUE_TXT + '. NON conta nel saldo.'];
+    vals.forEach((v, c) => {
+      const cell = wsF.getCell(r, c + 1);
+      cell.value = v;
+      cell.fill = solid(ferie ? EX.blue : EX.orange);
+      cell.alignment = { vertical: 'middle', horizontal: c === 4 || c === 3 ? 'left' : 'center' };
+      cell.border = { top: thin, bottom: thin, left: thin, right: thin };
+    });
+    wsF.getCell('A' + r).numFmt = 'dd/mm/yyyy';
   });
 
-  const wsSummary = XLSX.utils.json_to_sheet(summary);
-  wsSummary['!cols'] = [{wch:25},{wch:16},{wch:19},{wch:18},{wch:18},{wch:24},{wch:24},{wch:13},{wch:12}];
-  const wsDetail = XLSX.utils.json_to_sheet(detail);
-  wsDetail['!cols'] = [{wch:25},{wch:11},{wch:12},{wch:36},{wch:9},{wch:9},{wch:12},{wch:18},{wch:18},{wch:18},{wch:18}];
+  // =================== RISULTATO ===================
+  wsR.columns = [{ width: 52 }, { width: 22 }, { width: 100 }];
+  title(wsR, 'A1', 'RISULTATO FINALE — ORE IN PIÙ DALL\'INIZIO ALLA FINE', 'C1');
+  const now = new Date();
+  note(wsR, 'A2', 'Periodo coperto: dal ' + fmtFullDate(M.first) + al_(M.last) + '  ·  File creato il ' + fmtFullDate(now) + ' alle ' + pad(now.getHours()) + ':' + pad(now.getMinutes()), 'C2', 150);
+  function al_(d) { return ' al ' + fmtFullDate(d); }
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'Riepilogo settimanale');
-  XLSX.utils.book_append_sheet(wb, wsDetail, 'Dettaglio giorni');
-  XLSX.writeFile(wb, 'timbrature_' + dateKey(new Date()) + '.xlsx');
+  const sumWork = counted.reduce((s, x) => s + x.worked, 0);
+  const totMin = sumWork - counted.length * DUE;
+  const above = counted.filter(x => x.worked > DUE), below = counted.filter(x => x.worked < DUE);
+  const plusMin = above.reduce((s, x) => s + (x.worked - DUE), 0);
+  const minusMin = below.reduce((s, x) => s + (x.worked - DUE), 0);
+  const exact = counted.length - above.length - below.length;
+  const nFerie = days.filter(x => x.status === 'off' && x.info.type === 'ferie').length;
+  const nFest = days.filter(x => x.status === 'off' && x.info.type === 'festivo').length;
+  const nNoHours = days.filter(x => x.status !== 'off' && x.status !== 'ok').length;
+
+  const row = (r, label, value, f, expl, opt) => {
+    const a = wsR.getCell('A' + r); a.value = label; a.font = { bold: true }; a.alignment = { vertical: 'middle', wrapText: true };
+    const b = wsR.getCell('B' + r); b.value = value; if (f) b.numFmt = f;
+    b.alignment = { horizontal: 'center', vertical: 'middle' };
+    b.border = { top: thin, bottom: thin, left: thin, right: thin };
+    const c = wsR.getCell('C' + r); c.value = expl; c.alignment = { wrapText: true, vertical: 'middle' };
+    wsR.getRow(r).height = Math.max(22, rowHeight(expl, 105));
+    if (opt && opt.big) {
+      b.font = { bold: true, size: 16 };
+      b.fill = solid(totMin > 0 ? 'FFB8EBD6' : totMin < 0 ? 'FFF9C9D2' : EX.grey);
+      a.font = { bold: true, size: 12 };
+      wsR.getRow(r).height = 34;
+    }
+  };
+  const rsec = (r, text) => {
+    wsR.mergeCells('A' + r + ':C' + r);
+    const c = wsR.getCell('A' + r);
+    c.value = text; c.font = { bold: true, color: { argb: EX.white } }; c.fill = solid(EX.head);
+    c.alignment = { vertical: 'middle' }; wsR.getRow(r).height = 22;
+  };
+
+  row(4, totMin >= 0 ? 'ORE IN PIÙ DALL\'INIZIO ALLA FINE' : 'ORE IN MENO DALL\'INIZIO ALLA FINE',
+      { formula: signedFormula('B5'), result: fmtSigned(totMin) }, null,
+      'Somma delle differenze di tutti i giorni validi, dal primo all\'ultimo. Positivo = ore in più, negativo = ore in meno da recuperare.', { big: true });
+  row(5, 'Lo stesso risultato in minuti', { formula: 'SUM(' + D('L') + ')', result: totMin }, FMT_MIN,
+      'Somma della colonna «Differenza (minuti)» del foglio «' + SH_D + '».');
+  row(6, 'Lo stesso risultato in ore decimali', { formula: 'B5/60', result: totMin / 60 }, '+0.00" ore";-0.00" ore";0.00" ore"',
+      'Minuti ÷ 60. Utile per altri calcoli: ' + fmtSigned(totMin) + ' = ' + (totMin / 60).toFixed(2) + ' ore.');
+
+  rsec(8, 'COME SI ARRIVA A QUESTO NUMERO');
+  row(9, 'Giorni con orari validi (contati)', { formula: 'COUNTIF(' + D('N') + ',"SÌ")', result: counted.length }, '0',
+      'Giorni lavorativi con entrata e uscita corrette: sono gli unici che entrano nel calcolo.');
+  row(10, 'Ore lavorate in quei giorni', { formula: 'SUMIF(' + D('N') + ',"SÌ",' + D('J') + ')', result: sumWork / 1440 }, FMT_DUR,
+      'Somma delle ore lavorate nette (pausa già tolta) = ' + minToHM(sumWork) + '.');
+  row(11, 'Ore dovute in quei giorni', { formula: 'B9*ORE_GIORNO', result: counted.length * DUE / 1440 }, FMT_DUR,
+      counted.length + ' giorni × ' + DUE_TXT + ' = ' + minToHM(counted.length * DUE) + '.');
+  row(12, 'Differenza (lavorate − dovute)', { formula: 'ROUND((B10-B11)*1440,0)', result: totMin }, FMT_MIN,
+      minToHM(sumWork) + ' − ' + minToHM(counted.length * DUE) + ' = ' + fmtSigned(totMin) + '. Deve coincidere con il risultato in alto.');
+  row(13, 'Controllo', { formula: 'IF(ABS((B10-B11)*1440-B5)<0.5,"OK ✓","⚠ CONTROLLARE")', result: 'OK ✓' }, null,
+      'Verifica che «lavorate − dovute» sia uguale alla somma delle differenze giorno per giorno.');
+
+  rsec(15, 'DETTAGLIO: GIORNI SOPRA E SOTTO LE ' + DUE_TXT);
+  row(16, 'Giorni sopra ' + DUE_TXT, { formula: 'COUNTIF(' + D('L') + ',">0")', result: above.length }, '0',
+      'Giorni in cui hai lavorato più di ' + DUE_TXT + '.');
+  row(17, 'Minuti guadagnati nei giorni sopra', { formula: 'SUMIF(' + D('L') + ',">0")', result: plusMin }, FMT_MIN,
+      'Somma dei minuti in più di quei giorni = ' + fmtSigned(plusMin) + '.');
+  row(18, 'Giorni sotto ' + DUE_TXT, { formula: 'COUNTIF(' + D('L') + ',"<0")', result: below.length }, '0',
+      'Giorni in cui hai lavorato meno di ' + DUE_TXT + '.');
+  row(19, 'Minuti persi nei giorni sotto', { formula: 'SUMIF(' + D('L') + ',"<0")', result: minusMin }, FMT_MIN,
+      'Somma dei minuti in meno di quei giorni = ' + fmtSigned(minusMin) + '. I giorni sopra e quelli sotto si compensano: ' + fmtSigned(plusMin) + ' ' + (minusMin < 0 ? '−' : '+') + ' ' + minToHM(minusMin) + ' = ' + fmtSigned(totMin) + '.');
+  row(20, 'Giorni esattamente ' + DUE_TXT, { formula: 'COUNTIF(' + D('L') + ',0)', result: exact }, '0',
+      'Giorni con differenza zero.');
+
+  rsec(22, 'GIORNI NON CONTATI NEL SALDO');
+  row(23, 'Giorni di ferie', { formula: 'COUNTIF(' + D('E') + ',"Ferie")', result: nFerie }, '0',
+      'Non si lavora: ore dovute 0.');
+  row(24, 'Giorni festivi', { formula: 'COUNTIF(' + D('E') + ',"Festivo*")', result: nFest }, '0',
+      'Festivi che cadono dal lunedì al venerdì: ore dovute 0.');
+  row(25, 'Giorni lavorativi senza orari validi', { formula: 'COUNTIFS(' + D('E') + ',"Lavorativo",' + D('N') + ',"NO")', result: nNoHours }, '0',
+      'Giorni lavorativi con orari mancanti, incompleti o non validi (o non ancora arrivati): non creano né ore in più né ore in meno.');
+  row(26, 'Totale giorni lunedì–venerdì nel periodo', { formula: 'COUNT(' + D('A') + ')', result: nD }, '0',
+      'Tutte le righe del foglio «' + SH_D + '».');
+  row(27, 'Controllo', { formula: 'IF(B9+B23+B24+B25=B26,"OK ✓","⚠ CONTROLLARE")', result: 'OK ✓' }, null,
+      'Giorni contati + ferie + festivi + giorni senza orari deve essere uguale al totale dei giorni.');
+
+  wsR.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  wsC.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  wb.views = [{ activeTab: 0 }];
+  return wb;
+}
+
+// la libreria Excel (~1 MB) si scarica solo quando serve, per non rallentare l'app
+function loadExcelJS() {
+  return new Promise((resolve, reject) => {
+    if (typeof ExcelJS !== 'undefined') { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('download non riuscito'));
+    document.head.appendChild(s);
+  });
+}
+
+document.getElementById('export-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('export-btn');
+  const label = btn.textContent;
+  btn.textContent = 'Preparo il file…';
+  btn.disabled = true;
+  try { await loadExcelJS(); }
+  catch (err) {
+    btn.textContent = label; btn.disabled = false;
+    alert('Libreria Excel non caricata: per l\'esportazione serve la connessione internet.');
+    return;
+  }
+  btn.textContent = label; btn.disabled = false;
+  let wb;
+  try { wb = buildExportWorkbook(ExcelJS); }
+  catch (err) { alert('Errore nella preparazione del file Excel: ' + err.message); return; }
+  if (!wb) { alert('Nessun dato da esportare.'); return; }
+  try {
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: XLSX_MIME });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'timbrature_' + dateKey(new Date()) + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+  } catch (err) {
+    alert('Errore nella creazione del file Excel: ' + err.message);
+  }
 });
 
 // ================= PWA install =================
