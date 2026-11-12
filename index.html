@@ -271,7 +271,7 @@ header {
 .day-extra summary::-webkit-details-marker { display: none; }
 .day-extra summary::before { content: '＋ '; color: var(--accent); }
 .day-extra[open] summary::before { content: '－ '; }
-.day-extra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+.day-extra-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px; margin-top: 6px; }
 .input-group input.extra-input {
   width: 100%;
   background: var(--bg);
@@ -287,6 +287,9 @@ header {
   appearance: none;
 }
 .input-group input.extra-input:focus { border-color: #ffb84d; }
+.perm-row { display: flex; align-items: center; gap: 6px; }
+.perm-row span { font-family: var(--mono); font-size: 13px; color: var(--text2); }
+.perm-row .perm-in { flex: 1 1 0; min-width: 0; text-align: center; padding-left: 4px; padding-right: 4px; }
 .extra-hint { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 6px; line-height: 1.5; }
 
 .summary-row {
@@ -836,6 +839,15 @@ function totalBalance() {
 
 // ================= RENDER =================
 const EXTRA_OPEN = new Set(); // giorni in cui il pannello "permesso / pausa" è aperto
+let extraDirty = false; // c'è un valore salvato dal pannello permesso/pausa non ancora mostrato
+function scheduleRender() {
+  setTimeout(() => {
+    const a = document.activeElement;
+    if (a && a.classList && a.classList.contains('extra-input')) return; // sto ancora scrivendo nel pannello
+    extraDirty = false;
+    render();
+  }, 60);
+}
 function render() {
   const mon = getMonday(weekOffset);
   const fri = addDays(mon, 4);
@@ -963,9 +975,13 @@ function render() {
       '<details class="day-extra" data-dk="' + dk + '"' + (extraOpen ? ' open' : '') + '>' +
         '<summary>permesso / pausa diversa</summary>' +
         '<div class="day-extra-grid">' +
-          '<div class="input-group"><label>Permesso (h:mm)</label>' +
-            '<input class="extra-input" type="text" inputmode="numeric" autocomplete="off" placeholder="0:00" ' +
-              'value="' + (dd.permesso > 0 ? minToColon(dd.permesso) : '') + '" data-day="' + i + '" data-field="permesso"></div>' +
+          '<div class="input-group"><label>Permesso (ore e minuti)</label>' +
+            '<div class="perm-row">' +
+              '<input class="extra-input perm-in" type="number" inputmode="numeric" min="0" max="24" step="1" placeholder="0" ' +
+                'value="' + (dd.permesso > 0 ? Math.floor(dd.permesso / 60) : '') + '" data-day="' + i + '" data-field="permesso-h" aria-label="ore di permesso"><span>h</span>' +
+              '<input class="extra-input perm-in" type="number" inputmode="numeric" min="0" max="59" step="1" placeholder="00" ' +
+                'value="' + (dd.permesso > 0 ? (dd.permesso % 60) : '') + '" data-day="' + i + '" data-field="permesso-m" aria-label="minuti di permesso"><span>m</span>' +
+            '</div></div>' +
           '<div class="input-group"><label>Pausa (minuti)</label>' +
             '<input class="extra-input" type="number" inputmode="numeric" min="0" max="480" step="1" placeholder="' + BREAK + '" ' +
               'value="' + (dd.pausa !== null ? dd.pausa : '') + '" data-day="' + i + '" data-field="pausa"></div>' +
@@ -1014,10 +1030,16 @@ function render() {
       const d = loadWeekByKey(k);
       const i = +e.target.dataset.day;
       const field = e.target.dataset.field;
-      if (field === 'permesso') {
-        const m = parseHM(e.target.value);
-        if (m === null || m > 24 * 60) { alert('Permesso non valido: scrivi ore e minuti, es. 4:00 oppure 2:30'); render(); return; }
-        d[i].permesso = m;
+      if (field === 'permesso-h' || field === 'permesso-m') {
+        // ore e minuti sono due caselle: li leggo insieme (vuoto = 0)
+        const grp = e.target.closest('.perm-row');
+        const hv = grp.querySelector('[data-field=permesso-h]').value.trim();
+        const mv = grp.querySelector('[data-field=permesso-m]').value.trim();
+        const h = hv === '' ? 0 : Number(hv), mi = mv === '' ? 0 : Number(mv);
+        if (!isFinite(h) || !isFinite(mi) || h < 0 || mi < 0 || mi > 59 || h > 24 || h * 60 + mi > 24 * 60) {
+          alert('Permesso non valido: ore da 0 a 24, minuti da 0 a 59'); render(); return;
+        }
+        d[i].permesso = Math.round(h) * 60 + Math.round(mi);
       } else {
         const raw = e.target.value.trim();
         if (raw === '') d[i].pausa = null;
@@ -1028,8 +1050,13 @@ function render() {
         }
       }
       saveWeekByKey(k, d);
-      render();
+      extraDirty = true;
+      scheduleRender();
     });
+    // se esco dal campo verso un altro campo del pannello NON ridisegno subito:
+    // il ridisegno farebbe sparire il campo appena toccato (la tastiera si chiude e non si scrive)
+    inp.addEventListener('blur', () => { if (extraDirty) scheduleRender(); });
+    inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
   });
   list.querySelectorAll('details.day-extra').forEach(det => {
     det.addEventListener('toggle', () => {
