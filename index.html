@@ -80,6 +80,16 @@ header {
 .bal-val { font-family: var(--mono); font-size: 30px; font-weight: 700; line-height: 1; }
 .bal-dec { font-family: var(--mono); font-size: 12px; color: var(--text2); }
 .bal-sub { font-family: var(--mono); font-size: 10px; color: var(--text2); margin-top: 10px; line-height: 1.5; }
+.bal-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.bt-val { font-family: var(--mono); font-size: 17px; font-weight: 700; }
+.bt-lbl { font-family: var(--mono); font-size: 10px; color: var(--text2); margin-top: 3px; letter-spacing: 0.5px; }
 
 .week-nav {
   display: flex;
@@ -396,6 +406,16 @@ header {
       <div class="bal-dec" id="bal-dec"></div>
     </div>
     <div class="bal-sub" id="bal-sub">nessun giorno registrato</div>
+    <div class="bal-totals">
+      <div>
+        <div class="bt-val" id="bt-worked">0h 00m</div>
+        <div class="bt-lbl">ORE LAVORATE TOTALI</div>
+      </div>
+      <div>
+        <div class="bt-val" id="bt-due" style="color:var(--text2)">0h 00m</div>
+        <div class="bt-lbl">ORE DOVUTE (7h 36m/giorno)</div>
+      </div>
+    </div>
   </div>
 
   <div class="week-nav">
@@ -702,7 +722,7 @@ function weekStats(mon, data) {
 
 // saldo cumulativo su tutte le settimane salvate
 function totalBalance() {
-  let balance = 0, days = 0, first = null, last = null;
+  let balance = 0, days = 0, worked = 0, first = null, last = null;
   allWeekKeys().forEach(k => {
     const mon = parseKey(k.slice(6));
     const st = weekStats(mon, loadWeekByKey(k));
@@ -715,8 +735,9 @@ function totalBalance() {
     });
     balance += st.balance;
     days += st.daysCounted;
+    worked += st.worked;
   });
-  return { balance: balance, days: days, first: first, last: last };
+  return { balance: balance, days: days, worked: worked, first: first, last: last };
 }
 
 // ================= RENDER =================
@@ -746,6 +767,8 @@ function render() {
   document.getElementById('bal-dec').textContent = tb.days > 0
     ? (tb.balance >= 0 ? '+' : '−') + (Math.abs(tb.balance) / 60).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ore'
     : '';
+  document.getElementById('bt-worked').textContent = minToHM(tb.worked);
+  document.getElementById('bt-due').textContent = minToHM(tb.days * TARGET_DAY);
   document.getElementById('bal-sub').textContent = tb.days > 0
     ? tb.days + (tb.days === 1 ? ' giorno registrato' : ' giorni registrati') + ' · dal ' + fmtFull(tb.first) + ' al ' + fmtFull(tb.last)
     : 'nessun giorno registrato';
