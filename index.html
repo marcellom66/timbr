@@ -308,6 +308,46 @@ header {
 .stat-val { font-family: var(--mono); font-size: 15px; font-weight: 700; }
 .stat-lbl { font-size: 10px; color: var(--text2); margin-top: 3px; letter-spacing: 0.5px; }
 
+/* totali per settimana */
+.weeks-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.weeks-scroll { max-height: 460px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.week-head, .week-row {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+  font-family: var(--mono);
+}
+.week-head { font-size: 9px; letter-spacing: 0.5px; color: var(--text3); padding: 0 8px 6px; text-align: right; }
+.week-head span:first-child { text-align: left; }
+.week-row {
+  width: 100%;
+  text-align: right;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px;
+  margin-bottom: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.week-row .wk-label { text-align: left; line-height: 1.3; }
+.week-row .wk-label small { display: block; color: var(--text2); font-size: 9px; letter-spacing: -0.2px; white-space: nowrap; }
+.week-row.current { border-color: var(--accent); }
+.week-row.empty { opacity: 0.55; padding-top: 5px; padding-bottom: 5px; }
+.week-row.total { cursor: default; background: var(--surface2); font-weight: 700; margin-bottom: 8px; }
+.wk-pos { color: var(--green); }
+.wk-neg { color: var(--accent); }
+.wk-zero { color: var(--text2); }
+.weeks-hint { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+
 /* ferie */
 .ferie-box {
   background: var(--surface);
@@ -513,6 +553,12 @@ header {
       <div class="stat-val" id="s-diff">0h 00m</div>
       <div class="stat-lbl" id="s-diff-lbl">RIMANENTI</div>
     </div>
+  </div>
+
+  <!-- TOTALI PER SETTIMANA -->
+  <div class="weeks-box">
+    <div class="ferie-title">📅 TOTALI PER SETTIMANA</div>
+    <div id="weeks-list"></div>
   </div>
 
   <!-- FERIE -->
@@ -1064,7 +1110,85 @@ function render() {
     });
   });
 
+  renderWeeks();
   renderFerie();
+}
+
+// elenco dei totali parziali di ogni settimana, dalla prima all'ultima con dati
+function renderWeeks() {
+  const box = document.getElementById('weeks-list');
+  box.innerHTML = '';
+  const info = new Map();
+  let firstK = null, lastK = null;
+  allWeekKeys().forEach(k => {
+    const key = k.slice(6);
+    const st = weekStats(parseKey(key), loadWeekByKey(k));
+    info.set(key, st);
+    if (st.daysCounted > 0) {
+      if (firstK === null || key < firstK) firstK = key;
+      if (lastK === null || key > lastK) lastK = key;
+    }
+  });
+  if (firstK === null) {
+    const e = document.createElement('div');
+    e.className = 'ferie-empty';
+    e.textContent = 'Nessuna settimana con orari inseriti';
+    box.appendChild(e);
+    return;
+  }
+  const rows = [];
+  let cum = 0, totWorked = 0, totDays = 0;
+  for (let mon = parseKey(firstK); dateKey(mon) <= lastK; mon = addDays(mon, 7)) {
+    const key = dateKey(mon);
+    const st = info.get(key) || weekStats(mon, emptyWeek());
+    cum += st.balance; totWorked += st.worked; totDays += st.daysCounted;
+    rows.push({ mon: mon, key: key, st: st, cum: cum });
+  }
+  const cls = v => v > 0 ? 'wk-pos' : v < 0 ? 'wk-neg' : 'wk-zero';
+  const short = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
+  const cur = dateKey(getMonday(weekOffset));
+
+  const head = document.createElement('div');
+  head.className = 'week-head';
+  head.innerHTML = '<span>SETTIMANA</span><span>ORE</span><span>DIFFERENZA</span><span>PROGRESSIVO</span>';
+  box.appendChild(head);
+
+  const tot = document.createElement('div');
+  tot.className = 'week-row total';
+  tot.innerHTML = '<span class="wk-label">TOTALE<small>' + rows.length + (rows.length === 1 ? ' settimana' : ' settimane') + '</small></span>' +
+    '<span>' + minToHM(totWorked) + '</span>' +
+    '<span class="' + cls(cum) + '">' + fmtSigned(cum) + '</span><span></span>';
+  box.appendChild(tot);
+
+  const scroll = document.createElement('div');
+  scroll.className = 'weeks-scroll';
+  rows.slice().reverse().forEach(r => {
+    const st = r.st;
+    const b = document.createElement('button');
+    const none = st.daysCounted === 0;
+    b.className = 'week-row' + (r.key === cur ? ' current' : '') + (none ? ' empty' : '');
+    const iso = isoWeek(r.mon);
+    const label = '<span class="wk-label">S' + iso.w +
+      '<small>' + short(r.mon) + '–' + short(addDays(r.mon, 4)) + ' · ' + (none ? (st.off === 5 ? 'ferie/festivi' : 'nessun dato') :
+        st.daysCounted + (st.daysCounted === 1 ? ' giorno' : ' giorni') + (st.off ? ' · ' + st.off + ' off' : '')) + '</small></span>';
+    b.innerHTML = label +
+      '<span>' + (none ? '—' : minToHM(st.worked)) + '</span>' +
+      '<span class="' + (none ? 'wk-zero' : cls(st.balance)) + '">' + (none ? '—' : fmtSigned(st.balance)) + '</span>' +
+      '<span class="' + cls(r.cum) + '">' + fmtSigned(r.cum) + '</span>';
+    b.title = 'Vai a questa settimana';
+    b.addEventListener('click', () => {
+      weekOffset = Math.min(0, Math.max(-156, offsetForKey(r.key)));
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    scroll.appendChild(b);
+  });
+  box.appendChild(scroll);
+
+  const hint = document.createElement('div');
+  hint.className = 'weeks-hint';
+  hint.textContent = 'Differenza = ore in più/meno dei giorni con orari inseriti (permessi inclusi). Progressivo = saldo accumulato dall\'inizio fino a quella settimana. Tocca una riga per aprirla.';
+  box.appendChild(hint);
 }
 
 function renderFerie() {
